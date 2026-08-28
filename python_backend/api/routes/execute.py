@@ -37,19 +37,34 @@ async def execute(req: ExecuteRequest, request: Request) -> Dict[str, Any]:
         raise HTTPException(404, detail=f'No DB connection registered for id={req.connection_id}')
 
     # ─── Read-only enforcement (Layer 1) ────────────────────────────────
-    if state.settings.read_only_by_default:
+    # Explicit None check: req.read_only may legitimately be False, so `or`
+    # would be wrong here. Request value wins; backend Settings is the fallback.
+    effective_read_only = (
+        req.read_only
+        if req.read_only is not None
+        else state.settings.read_only_by_default
+    )
+    if effective_read_only:
         from services.validator_service import Validator
         validator = Validator()
         if not validator.is_read_only(req.sql):
             raise HTTPException(
                 403,
-                detail='Read-only mode is on. Enable write mode in settings to run INSERT/UPDATE/DELETE/DROP.',
+                detail=(
+                    'Write queries are blocked because the Verbis read-only setting is on. '
+                    'Disable "verbis.execution.readOnlyByDefault" in VS Code settings to run '
+                    'INSERT/UPDATE/DELETE/DROP.'
+                ),
             )
 
     # ─── Execute ────────────────────────────────────────────────────────
     row_limit = min(req.row_limit or state.settings.row_limit_default,
                     state.settings.row_limit_max)
-    timeout = state.settings.execution_timeout_seconds
+    timeout = (
+        req.timeout_seconds
+        if req.timeout_seconds is not None
+        else state.settings.execution_timeout_seconds
+    )
 
     svc = ExecutionService(pool, timeout_seconds=timeout, row_limit=row_limit)
     try:

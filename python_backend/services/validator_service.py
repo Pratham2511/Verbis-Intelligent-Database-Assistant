@@ -20,7 +20,10 @@ except ImportError:
 
 
 class Validator:
-    def __init__(self, dialect: str = 'postgresql') -> None:
+    def __init__(self, dialect: str = 'postgres') -> None:
+        # NOTE: sqlglot 30.x renamed the dialect 'postgresql' → 'postgres'.
+        # This value is passed to sqlglot.parse_one(read=...), so it must be a
+        # valid sqlglot dialect name. ('postgresql' raises ValueError.)
         self.dialect = dialect
 
     # ─── Step 1: Syntax validation ────────────────────────────────────
@@ -88,6 +91,7 @@ class Validator:
         if isinstance(ast, exp.With):
             # WITH ... must end in SELECT
             return isinstance(ast.this, exp.Select)
-        if isinstance(ast, exp.Explain):
+        # sqlglot 30.x removed exp.Explain; EXPLAIN parses as a Command.
+        if isinstance(ast, exp.Command) and ast.this.upper() == 'EXPLAIN':
             return True
         return False

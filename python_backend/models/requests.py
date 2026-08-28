@@ -18,6 +18,8 @@ class ExecuteRequest(BaseModel):
     sql: str
     connection_id: str
     row_limit: int = 500
+    read_only: Optional[bool] = None      # None → fall back to Settings.read_only_by_default
+    timeout_seconds: Optional[int] = None  # None → fall back to Settings.execution_timeout_seconds
 
 
 class ImpactRequest(BaseModel):

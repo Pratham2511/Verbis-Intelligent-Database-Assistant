@@ -148,7 +148,7 @@ class SchemaImpactPredictor:
 
         # AST-based check
         try:
-            ast = sqlglot.parse_one(sql, read='postgresql')
+            ast = sqlglot.parse_one(sql, read='postgres')
 
             if affected['type'] in ('column_rename', 'column_drop'):
                 col_name = affected.get('old_name') or affected.get('column')
@@ -180,20 +180,20 @@ class SchemaImpactPredictor:
             return None
         if affected['type'] == 'column_rename':
             try:
-                ast = sqlglot.parse_one(sql, read='postgresql')
+                ast = sqlglot.parse_one(sql, read='postgres')
                 for col in ast.find_all(exp.Column):
                     if col.name == affected['old_name']:
                         col.set('this', exp.to_identifier(affected['new_name']))
-                return ast.sql(dialect='postgresql')
+                return ast.sql(dialect='postgres')
             except Exception:
                 return None
         if affected['type'] == 'table_rename':
             try:
-                ast = sqlglot.parse_one(sql, read='postgresql')
+                ast = sqlglot.parse_one(sql, read='postgres')
                 for tbl in ast.find_all(exp.Table):
                     if tbl.name == affected['old_name']:
                         tbl.set('this', exp.to_identifier(affected['new_name']))
-                return ast.sql(dialect='postgresql')
+                return ast.sql(dialect='postgres')
             except Exception:
                 return None
         return None

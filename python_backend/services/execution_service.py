@@ -30,6 +30,18 @@ class ExecutionService:
             result = conn.execute(stmt)
             columns: List[str] = list(result.keys()) if result.returns_rows else []
             rows: List[Dict] = []
+            if not result.returns_rows:
+                # DDL/DML (INSERT/UPDATE/DELETE/CREATE/DROP/...): no result set.
+                # Commit so the write persists, then return an empty result.
+                conn.commit()
+                elapsed = int((time.perf_counter() - start) * 1000)
+                return {
+                    'columns': columns,
+                    'rows': rows,
+                    'rowCount': 0,
+                    'executionTimeMs': elapsed,
+                    'truncated': False,
+                }
             for i, row in enumerate(result):
                 if i >= self.row_limit:
                     logger.info(f'Row limit ({self.row_limit}) hit; truncating.')

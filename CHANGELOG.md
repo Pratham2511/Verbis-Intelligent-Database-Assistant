@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.2.6] — 2026-08-28
+
+Execution settings propagation and SQL write-handling fixes.
+
+### Fixed
+
+- Fixed `/run` execution settings not being fully propagated from the VS Code extension to the Python backend. The `readOnlyByDefault` and `timeoutSeconds` settings are now read fresh on every `/run` and sent with the request, so changes take effect immediately without a backend restart.
+- Write mode is now respected correctly during execution, including explicit write mode overrides. An explicit `read_only=false` in the request now correctly overrides the backend's default instead of being discarded.
+- Fixed SQL validation failures caused by incompatible `sqlglot` PostgreSQL dialect names. `sqlglot` 30.x renamed the dialect `postgresql` to `postgres`; the validator and schema-impact analysis now use the valid dialect name, so read-only `SELECT` statements are no longer incorrectly blocked with `403`.
+- Fixed compatibility with the current `sqlglot` handling of `EXPLAIN` statements (`exp.Explain` was removed; `EXPLAIN` now parses as a `Command`).
+- Fixed a backend execution failure where DDL and DML statements such as `CREATE TABLE` and `INSERT` could return a server error because the execution layer assumed every SQL statement produced result rows. Non-row statements now commit and return an empty result.
+
+### Improved
+
+- Execution timeout settings can now be passed through the `/run` request contract.
+- Backend execution behavior is more consistent across `SELECT`, DDL, and DML statements.
+- Added regression coverage for the read-only execution policy and request contract.
+- Improved reliability of database write operations when write mode is enabled.
+
 ## [1.2.5] — 2026-08-21
 
 Backend connection registration fix.

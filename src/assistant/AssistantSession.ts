@@ -423,11 +423,14 @@ export class AssistantSession {
       if (!dbConfigId) {
         return { kind: 'error', message: 'No active database connection. Add one from the Verbis sidebar.' };
       }
-      const rowLimit = vscode.workspace
-        .getConfiguration('verbis')
-        .get<number>('query.rowLimit', 500);
+      // Read execution settings fresh on every /run so changes take effect
+      // immediately without a backend restart.
+      const verbisCfg = vscode.workspace.getConfiguration('verbis');
+      const rowLimit = verbisCfg.get<number>('query.rowLimit', 500);
+      const readOnly = verbisCfg.get<boolean>('execution.readOnlyByDefault', true);
+      const timeoutSeconds = verbisCfg.get<number>('execution.timeoutSeconds', 60);
 
-      const result = await client.execute({ sql, dbConfigId, rowLimit });
+      const result = await client.execute({ sql, dbConfigId, rowLimit, readOnly, timeoutSeconds });
 
       if (this.abortController.signal.aborted) {
         return { kind: 'cancelled', message: 'Execution cancelled.' };

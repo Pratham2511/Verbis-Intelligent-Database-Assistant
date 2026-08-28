@@ -171,6 +171,8 @@ export class BackendClient {
     sql: string;
     dbConfigId: string;
     rowLimit?: number;
+    readOnly?: boolean;
+    timeoutSeconds?: number;
   }): Promise<ExecutionResult> {
     // Translate to the Python backend's ExecuteRequest field names
     // (snake_case per python_backend/models/requests.py).
@@ -178,6 +180,8 @@ export class BackendClient {
       sql: payload.sql,
       connection_id: payload.dbConfigId,
       row_limit: payload.rowLimit ?? 500,
+      read_only: payload.readOnly,
+      timeout_seconds: payload.timeoutSeconds,
     });
   }
 
