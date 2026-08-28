@@ -87,13 +87,21 @@ async def get_schema(dbConfigId: str, request: Request) -> Dict[str, Any]:
     if pool is None:
         raise HTTPException(404, detail=f'No DB connection registered for id={dbConfigId}')
 
-    # Check cache first
+    # Check cache first — but only trust a NON-EMPTY cache. An empty cached
+    # result ([]) is almost always a stale artifact from a moment when the
+    # database had no introspectable tables (e.g. a placeholder SQLite file
+    # created before the real data was migrated in). Treating [] as valid
+    # would leave the Schema panel permanently showing "No schema loaded" even
+    # after the database gained tables, so an empty cache falls through to a
+    # fresh introspection below.
     cache_path = state.workspace_path / 'schema_cache.json'
     if cache_path.exists():
         import json
         cached = json.loads(cache_path.read_text())
-        logger.info('Returning cached schema (use POST /api/schema/refresh to force)')
-        return {'tables': cached, 'indexed': True}
+        if cached:
+            logger.info('Returning cached schema (use POST /api/schema/refresh to force)')
+            return {'tables': cached, 'indexed': True}
+        logger.info('Schema cache is empty — re-introspecting instead of returning []')
 
     # Introspect via SQLAlchemy reflection
     tables = _introspect_schema(pool, state.workspace_path, state)

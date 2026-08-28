@@ -82,8 +82,11 @@ class PIIMasker:
             return 'ssn'
         if 'credit' in name_lower and 'card' in name_lower:
             return 'credit_card'
-        if 'name' in name_lower and 'column' not in name_lower:
-            return 'name'
+        # NOTE: a column merely *named* "name" (e.g. School.Name, username,
+        # filename) is NOT sufficient to classify it as person-name PII — that
+        # would mask ordinary single-word values like 'Luca'. Person-name
+        # detection is left to the value-pattern match below (full "First Last"
+        # shape) and Presidio, so ordinary database values are never altered.
 
         # Fall back to value-pattern matching
         for value in sample_values:

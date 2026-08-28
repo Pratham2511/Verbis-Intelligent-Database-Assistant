@@ -133,10 +133,20 @@ class ExecutionService:
             sqlglot_dialect = 'postgres' if dialect == 'postgresql' else dialect
             statements = _split_statements(sql, dialect=sqlglot_dialect)
             first = statements[0] if statements else sql
+
+            # SQLite has no EXPLAIN (ANALYZE, FORMAT JSON). Skip plan analysis
+            # quietly for dialects that don't support a JSON plan — this is
+            # expected, not a warning-worthy failure.
+            if dialect in ('sqlite', 'mssql', 'oracle'):
+                return None
+
             with self.engine.connect() as conn:
                 # PostgreSQL: EXPLAIN (ANALYZE, FORMAT JSON) ...
                 # MySQL: EXPLAIN FORMAT=JSON ...
-                explain_sql = f'EXPLAIN (ANALYZE, FORMAT JSON) {first}'
+                if dialect == 'mysql':
+                    explain_sql = f'EXPLAIN FORMAT=JSON {first}'
+                else:
+                    explain_sql = f'EXPLAIN (ANALYZE, FORMAT JSON) {first}'
                 result = conn.execute(text(explain_sql))
                 row = result.fetchone()
                 if row:

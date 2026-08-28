@@ -7,13 +7,14 @@ export declare class BackendManager extends EventEmitter {
     private readonly workspacePath;
     private readonly pythonExe;
     private readonly startPort;
+    private readonly getEnvVars?;
     private process;
     private port;
     private client;
     private crashTimestamps;
     private status;
     constructor(backendScriptPath: string, backendDir: string, workspacePath: string, pythonExe: string, // ← from BackendInstaller
-    startPort?: number);
+    startPort?: number, getEnvVars?: (() => Promise<Record<string, string>>) | undefined);
     start(): Promise<BackendStatus>;
     private waitForHealth;
     private handleCrash;

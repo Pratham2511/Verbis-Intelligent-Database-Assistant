@@ -111,6 +111,8 @@ class BackendClient {
             sql: payload.sql,
             connection_id: payload.dbConfigId,
             row_limit: payload.rowLimit ?? 500,
+            read_only: payload.readOnly,
+            timeout_seconds: payload.timeoutSeconds,
         });
     }
     // ─── Schema Introspection + ChromaDB Indexing ───────────────────────

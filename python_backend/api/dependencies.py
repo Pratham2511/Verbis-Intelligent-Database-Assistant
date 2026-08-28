@@ -54,8 +54,12 @@ def init_app_state(settings: Settings) -> AppState:
     if config_path.exists():
         try:
             from loguru import logger
-            from core.db_pool import build_connection_url
-            
+            from core.db_pool import (
+                build_connection_url,
+                detect_legacy_extension_db,
+                migrate_legacy_sqlite_db,
+            )
+
             config = json.loads(config_path.read_text())
             for conn in config.get('connections', []):
                 db_id = conn.get('id')
@@ -68,10 +72,54 @@ def init_app_state(settings: Settings) -> AppState:
                         port=conn.get('port', 0),
                         database=conn.get('database', ''),
                         user=conn.get('user', ''),
-                        password=password
+                        password=password,
+                        workspace_path=settings.workspace_path,
                     )
                     db_pools.register(db_id, url)
                     logger.info(f"Registered connection {db_id}")
+
+                    # Surface where a SQLite connection actually resolved to.
+                    # resolve_sqlite_path prefers an existing legacy DB (with
+                    # data) over an empty canonical placeholder, so existing
+                    # user data is opened in place and never shadowed.
+                    if conn.get('dialect') == 'sqlite':
+                        legacy = detect_legacy_extension_db(
+                            conn.get('database', ''), settings.workspace_path
+                        )
+                        if legacy is not None:
+                            # Attempt a safe, non-destructive COPY of the legacy
+                            # database into the workspace-owned canonical
+                            # location. The legacy file is left untouched as a
+                            # backup. If the copy fails, the engine keeps using
+                            # the legacy file in place — no data is ever lost.
+                            migrated = migrate_legacy_sqlite_db(
+                                conn.get('database', ''), settings.workspace_path
+                            )
+                            if migrated is not None:
+                                # Re-register the engine against the canonical
+                                # workspace copy so future runs are anchored to
+                                # the user's project, not the extension dir.
+                                url = build_connection_url(
+                                    dialect='sqlite',
+                                    host=conn.get('host', ''),
+                                    port=conn.get('port', 0),
+                                    database=conn.get('database', ''),
+                                    user=conn.get('user', ''),
+                                    password=password,
+                                    workspace_path=settings.workspace_path,
+                                )
+                                db_pools.register(db_id, url)
+                                logger.info(
+                                    f"SQLite connection {db_id} migrated to "
+                                    f"workspace database at {migrated}. "
+                                    f"Legacy backup preserved at {legacy}."
+                                )
+                            else:
+                                logger.info(
+                                    f"SQLite connection {db_id} is using existing "
+                                    f"legacy database at {legacy}. Your data is "
+                                    f"preserved and opened in place."
+                                )
                 except Exception as e:
                     logger.error(f"Failed to register connection {db_id}: {e}")
         except Exception as e:

@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.2.9] — 2026-08-29
+
+SQLite database resolution consistency, schema sidebar loading, and a PII over-masking fix.
+
+### Fixed
+
+- SQLite connections now consistently resolve to the canonical workspace database at `.qmind/databases/<name>.db`. TypeScript and Python path-resolution logic are aligned, and legacy installed-extension database discovery is version-independent (no hard-coded extension versions).
+- The Schema sidebar now loads the connected database schema correctly. A stale empty `schema_cache.json` (written when the canonical database was a placeholder) is no longer returned verbatim; an empty cache is treated as a miss and re-introspected, so tables and columns (e.g. `School` with `ID`, `Name`, `Depart`) populate reliably.
+- PII masking no longer redacts ordinary single-word values. A column merely named `Name` (e.g. `School.Name`) is no longer classified as person-name PII by column name alone, so values such as `Luca` display unmasked. Person-name detection now relies on value-pattern matching and Presidio, so genuine PII/full names (e.g. `John Doe`) remain protected.
+
+### Packaging
+
+- VSIX packaging now excludes Python virtual environments (`.venv`, `python_backend/.venv`), `.pytest_cache`, `__pycache__`, `*.pyc`, generated VSIX files, and other temporary/local artifacts.
+
+## [1.2.8] — 2026-08-28
+
+Workspace-owned SQLite database paths, legacy database migration, and database location controls in the Connections sidebar.
+
 ## [1.2.7] — 2026-08-28
 
 Dialect-aware SQL generation and safe multi-statement execution.

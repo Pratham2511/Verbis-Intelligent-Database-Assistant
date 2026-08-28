@@ -2,7 +2,7 @@
   "name": "verbis-db-assistant",
   "displayName": "Verbis — Intelligent Database Assistant",
   "description": "Talk to any database in plain English. Verbis converts natural language into optimized SQL and NoSQL queries, explains results, tracks query history, and protects your data — all inside VS Code.",
-  "version": "1.2.7",
+  "version": "1.2.9",
   "publisher": "pratham2511",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -121,8 +121,46 @@
       {
         "command": "verbis.openGlossaryEditor",
         "title": "Verbis: Open Business Glossary Editor"
+      },
+      {
+        "command": "verbis.revealDatabase",
+        "title": "Verbis: Reveal Database File",
+        "icon": "$(folder-opened)"
+      },
+      {
+        "command": "verbis.copyDatabasePath",
+        "title": "Verbis: Copy Database Path",
+        "icon": "$(clippy)"
+      },
+      {
+        "command": "verbis.openDatabase",
+        "title": "Verbis: Open Database File",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "verbis.recallQuery",
+        "title": "Verbis: Recall Query"
       }
     ],
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "verbis.revealDatabase",
+          "when": "view == verbis.connections && viewItem == verbisConnectionSqlite",
+          "group": "verbis@1"
+        },
+        {
+          "command": "verbis.copyDatabasePath",
+          "when": "view == verbis.connections && viewItem == verbisConnectionSqlite",
+          "group": "verbis@2"
+        },
+        {
+          "command": "verbis.openDatabase",
+          "when": "view == verbis.connections && viewItem == verbisConnectionSqlite",
+          "group": "verbis@3"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "verbis.openAssistant",

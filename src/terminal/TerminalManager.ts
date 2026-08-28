@@ -16,6 +16,7 @@ import { BackendStatus } from '../types';
 
 export class TerminalManager implements vscode.Disposable {
   private terminal: vscode.Terminal | null = null;
+  private pty: VerbisTerminal | null = null;
   private closeSubscription: vscode.Disposable | null = null;
 
   constructor(
@@ -25,16 +26,24 @@ export class TerminalManager implements vscode.Disposable {
     private readonly workspace: WorkspaceService,
   ) {}
 
-  /** Open the assistant terminal, focusing the existing one if present. */
-  open(): void {
+  /**
+   * Open the assistant terminal, focusing the existing one if present.
+   * When `recallSql` is given (from Recent Queries), it is loaded into the
+   * terminal as the pending executable SQL, ready to review and /run.
+   */
+  open(recallSql?: string): void {
     if (this.terminal) {
       // Reveal the existing terminal rather than spawning a duplicate.
       this.terminal.show();
+      if (recallSql) {
+        this.pty?.recallSql(recallSql);
+      }
       return;
     }
 
     const session = new AssistantSession(this.getClient, this.secrets, this.workspace);
     const pty = new VerbisTerminal(session, this.getStatus, () => this.disposeTerminal());
+    this.pty = pty;
 
     this.terminal = vscode.window.createTerminal({
       name: 'Verbis Assistant',
@@ -50,11 +59,17 @@ export class TerminalManager implements vscode.Disposable {
     });
 
     this.terminal.show();
+
+    // Apply any recalled SQL once the terminal is ready.
+    if (recallSql) {
+      pty.recallSql(recallSql);
+    }
   }
 
   private disposeTerminal(): void {
     this.closeSubscription?.dispose();
     this.closeSubscription = null;
+    this.pty = null;
     if (this.terminal) {
       // dispose() on an already-closed terminal is a no-op.
       this.terminal.dispose();

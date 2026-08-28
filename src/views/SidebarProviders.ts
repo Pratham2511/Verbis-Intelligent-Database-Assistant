@@ -12,6 +12,7 @@
 // (editor area) — these views provide quick access to it and to connections.
 // ============================================================================
 
+import * as path from 'path';
 import * as vscode from 'vscode';
 import { WorkspaceService } from '../services/WorkspaceService';
 import { BackendClient } from '../services/BackendClient';
@@ -29,7 +30,12 @@ export class ConnectionsProvider implements vscode.TreeDataProvider<vscode.TreeI
 
   getTreeItem(item: vscode.TreeItem): vscode.TreeItem { return item; }
 
-  async getChildren(): Promise<vscode.TreeItem[]> {
+  async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
+    // Expanding a SQLite connection → inline detail + action items.
+    if (element instanceof ConnectionItem) {
+      return element.detailItems;
+    }
+
     const cfg = await this.workspace.readConfig();
     if (cfg.connections.length === 0) {
       const add = new vscode.TreeItem('Add Database Connection…');
@@ -37,18 +43,77 @@ export class ConnectionsProvider implements vscode.TreeDataProvider<vscode.TreeI
       add.iconPath = new vscode.ThemeIcon('add');
       return [add];
     }
-    return cfg.connections.map(c => {
-      const item = new vscode.TreeItem(c.name, vscode.TreeItemCollapsibleState.None);
-      item.description = c.dialect;
-      item.tooltip = `${c.user}@${c.host}:${c.port}/${c.database}`;
-      item.iconPath = new vscode.ThemeIcon('database');
-      item.contextValue = 'verbisConnection';
-      item.command = {
-        command: 'verbis.selectConnection',
-        title: 'Select Connection',
-      };
-      return item;
-    });
+    return cfg.connections.map(c => new ConnectionItem(c, this.workspace));
+  }
+}
+
+/** A connection tree node. SQLite connections are collapsible and expose the
+ * resolved database file location + reveal/copy actions as child items. */
+class ConnectionItem extends vscode.TreeItem {
+  readonly detailItems: vscode.TreeItem[] = [];
+
+  constructor(
+    public readonly conn: import('../types').DBConfig,
+    workspace: WorkspaceService,
+  ) {
+    super(
+      conn.name,
+      conn.dialect === 'sqlite'
+        ? vscode.TreeItemCollapsibleState.Collapsed
+        : vscode.TreeItemCollapsibleState.None,
+    );
+    this.description = conn.dialect;
+    this.iconPath = new vscode.ThemeIcon('database');
+    this.id = `conn:${conn.id}`;
+    // Clicking the connection selects it (and refreshes the Schema view).
+    this.command = {
+      command: 'verbis.selectConnection',
+      title: 'Select Connection',
+      arguments: [conn.id],
+    };
+
+    if (conn.dialect === 'sqlite') {
+      const resolved = workspace.resolveSqlitePath(conn.database);
+      const fileName = workspace.resolveSqliteFileName(conn.database);
+      const isWorkspace = resolved.startsWith(workspace.workspaceRootPath);
+      this.contextValue = 'verbisConnectionSqlite';
+      this.tooltip = new vscode.MarkdownString(
+        `**${conn.name}** (sqlite)\n\n` +
+        `Database: \`${fileName}\`\n\n` +
+        `Location: ${isWorkspace ? 'Workspace (.qmind/databases)' : 'External'}\n\n` +
+        `Path: \`${resolved}\``
+      );
+
+      // Child: resolved file name.
+      const fileItem = new vscode.TreeItem(fileName, vscode.TreeItemCollapsibleState.None);
+      fileItem.iconPath = new vscode.ThemeIcon('file-binary');
+      fileItem.tooltip = 'SQLite database file';
+      fileItem.contextValue = 'verbisDbFile';
+
+      // Child: compact resolved path (workspace-relative when possible).
+      const compact = isWorkspace
+        ? path.relative(workspace.workspaceRootPath, resolved)
+        : resolved;
+      const pathItem = new vscode.TreeItem(compact, vscode.TreeItemCollapsibleState.None);
+      pathItem.iconPath = new vscode.ThemeIcon('folder-library');
+      pathItem.tooltip = `Full path: ${resolved}`;
+      pathItem.contextValue = 'verbisDbFile';
+
+      // Child: reveal action.
+      const reveal = new vscode.TreeItem('Reveal Database', vscode.TreeItemCollapsibleState.None);
+      reveal.iconPath = new vscode.ThemeIcon('folder-opened');
+      reveal.command = { command: 'verbis.revealDatabase', title: 'Reveal Database', arguments: [this] };
+
+      // Child: copy path action.
+      const copy = new vscode.TreeItem('Copy Path', vscode.TreeItemCollapsibleState.None);
+      copy.iconPath = new vscode.ThemeIcon('clippy');
+      copy.command = { command: 'verbis.copyDatabasePath', title: 'Copy Database Path', arguments: [this] };
+
+      this.detailItems = [fileItem, pathItem, reveal, copy];
+    } else {
+      this.contextValue = 'verbisConnection';
+      this.tooltip = `${conn.user}@${conn.host}:${conn.port}/${conn.database}`;
+    }
   }
 }
 
@@ -58,14 +123,32 @@ export class SchemaTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
   private readonly onChange = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.onChange.event;
 
+  /** Explicitly selected connection id (set via verbis.selectConnection). */
+  private selectedConnectionId?: string;
+
   constructor(
     private readonly getClient: () => BackendClient | null,
     private readonly getStatus: () => BackendStatus,
+    private readonly workspace?: WorkspaceService,
   ) {}
 
   refresh(): void { this.onChange.fire(); }
 
+  /** Record the user-selected connection so the schema view follows it. */
+  setActiveConnection(id: string): void {
+    this.selectedConnectionId = id;
+  }
+
   getTreeItem(item: vscode.TreeItem): vscode.TreeItem { return item; }
+
+  /** Active connection id — the explicitly selected one if set, else the most
+   * recently added connection (mirrors AssistantSession). */
+  private async activeConnectionId(): Promise<string | undefined> {
+    if (this.selectedConnectionId) return this.selectedConnectionId;
+    if (!this.workspace) return undefined;
+    const cfg = await this.workspace.readConfig();
+    return cfg.connections[cfg.connections.length - 1]?.id;
+  }
 
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
     const client = this.getClient();
@@ -86,28 +169,45 @@ export class SchemaTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
       item.iconPath = new vscode.ThemeIcon(state === 'crashed' ? 'error' : 'debug-start');
       return [item];
     }
-    if (element) return [];  // columns not expanded in the tree (kept simple)
 
+    // Expanding a table node → list its columns.
+    if (element instanceof SchemaTableItem) {
+      return element.table.columns.map(col => {
+        const colItem = new vscode.TreeItem(col.name, vscode.TreeItemCollapsibleState.None);
+        colItem.description = col.type;
+        colItem.iconPath = new vscode.ThemeIcon(
+          col.isPrimaryKey ? 'key' : col.isForeignKey ? 'link' : 'symbol-field'
+        );
+        return colItem;
+      });
+    }
+    if (element) return [];
+
+    const connId = (await this.activeConnectionId()) ?? 'default';
     try {
-      const schema = await client.getSchema('default');
+      const schema = await client.getSchema(connId);
       const tables = schema?.tables ?? [];
       if (tables.length === 0) {
         const item = new vscode.TreeItem('No schema loaded — open the assistant and connect');
         item.command = { command: 'verbis.openAssistant', title: 'Open Assistant' };
         return [item];
       }
-      return tables.slice(0, 200).map(t => {
-        const item = new vscode.TreeItem(t.tableName, vscode.TreeItemCollapsibleState.None);
-        item.iconPath = new vscode.ThemeIcon('symbol-class');
-        item.tooltip = `${t.columns.length} columns`;
-        return item;
-      });
+      return tables.slice(0, 200).map(t => new SchemaTableItem(t));
     } catch {
       const item = new vscode.TreeItem('Schema unavailable — select a connection');
       item.command = { command: 'verbis.selectConnection', title: 'Select Connection' };
       item.iconPath = new vscode.ThemeIcon('warning');
       return [item];
     }
+  }
+}
+
+/** A schema table tree node that carries its column metadata for expansion. */
+class SchemaTableItem extends vscode.TreeItem {
+  constructor(public readonly table: import('../types').SchemaInfo) {
+    super(table.tableName, vscode.TreeItemCollapsibleState.Collapsed);
+    this.iconPath = new vscode.ThemeIcon('symbol-class');
+    this.tooltip = `${table.columns.length} columns`;
   }
 }
 
@@ -132,14 +232,31 @@ export class HistoryProvider implements vscode.TreeDataProvider<vscode.TreeItem>
       return [item];
     }
     return history.slice(-25).reverse().map(h => {
-      const label = h.nlInput?.trim()
+      const label = h.nlInput?.trim() && h.nlInput !== '(terminal)'
         ? h.nlInput.slice(0, 60)
         : h.sql.slice(0, 60);
       const item = new vscode.TreeItem(label, vscode.TreeItemCollapsibleState.None);
-      item.description = h.executionTimeMs != null ? `${h.executionTimeMs}ms` : '';
-      item.tooltip = h.sql;
+      const time = new Date(h.timestamp).toLocaleString();
+      const status = h.success ? 'ok' : 'failed';
+      const parts = [status];
+      if (h.connectionName) parts.push(h.connectionName);
+      if (h.executionTimeMs != null) parts.push(`${h.executionTimeMs}ms`);
+      if (h.rowCount != null) parts.push(`${h.rowCount} rows`);
+      item.description = parts.join(' · ');
+      item.tooltip = new vscode.MarkdownString(
+        `**${h.nlInput && h.nlInput !== '(terminal)' ? h.nlInput : '(query)'}**\n\n` +
+        '```sql\n' + h.sql + '\n```\n\n' +
+        `$(clock) ${time}  ·  status: ${status}` +
+        (h.connectionName ? `  ·  $(database) ${h.connectionName}` : '') +
+        (h.rowCount != null ? `  ·  ${h.rowCount} rows` : '')
+      );
       item.iconPath = new vscode.ThemeIcon(h.success ? 'check' : 'error');
-      item.command = { command: 'verbis.openTree', title: 'Open Query Tree' };
+      // Clicking restores the SQL into the assistant for review/re-execution.
+      item.command = {
+        command: 'verbis.recallQuery',
+        title: 'Recall Query',
+        arguments: [h.sql],
+      };
       return item;
     });
   }

@@ -87,13 +87,57 @@ class VerbisTerminal {
     // ─── Lifecycle ──────────────────────────────────────────────────────────
     open() {
         this.printBanner();
-        this.prompt();
+        // Restore the active persisted conversation so chat survives close/reopen.
+        // Fail-safe: resolves to 0 when nothing is stored.
+        void this.session.restoreLastSession().then(restored => {
+            if (restored > 0) {
+                this.renderRestoredTranscript();
+                this.writeln(c(ANSI.fgGray, `— Restored your last conversation (${restored} turn${restored === 1 ? '' : 's'}). ` +
+                    `/history for all · /reset for a new chat —`));
+                this.writeln('');
+            }
+            this.prompt();
+        });
+    }
+    /**
+     * Render the restored transcript so the user actually sees their prior
+     * conversation (not just a notice). Bounded to the most recent turns to
+     * keep reopening fast; /history shows the full log.
+     */
+    renderRestoredTranscript() {
+        const MAX_RENDER = 20;
+        const t = this.session.transcript;
+        const shown = t.slice(-MAX_RENDER);
+        if (t.length > shown.length) {
+            this.writeln(c(ANSI.fgGray, `(… ${t.length - shown.length} earlier turns hidden — /history to see all)`));
+        }
+        for (const turn of shown) {
+            if (turn.role === 'user') {
+                this.writeln(`${c(ANSI.fgCyan + ANSI.bold, 'you')} ${c(ANSI.fgGray, '›')} ${turn.content}`);
+            }
+            else {
+                this.writeln(`${c(ANSI.fgGreen + ANSI.bold, 'verbis')} ${c(ANSI.fgGray, '›')} ${turn.content}`);
+            }
+        }
+        this.writeln('');
     }
     close() {
         this.disposed = true;
         this.session.cancel();
         // Discard any session-only API key when the terminal closes.
         this.session.discardSessionKey();
+    }
+    /**
+     * Load a recalled SQL statement (from Recent Queries) as the pending
+     * executable SQL and show it, so the user can review and /run it directly.
+     */
+    recallSql(sql) {
+        this.lastSql = sql;
+        this.writeln(c(ANSI.fgGray, 'Recalled query from Recent Queries:'));
+        this.writeln(c(ANSI.fgCyan, sql));
+        this.writeln(c(ANSI.fgGray, 'Type /run to execute it, or ask a new question.'));
+        this.writeln('');
+        this.prompt();
     }
     // ─── Input handling (keystroke-level, like a real CLI) ─────────────────
     handleInput(data) {
@@ -217,7 +261,10 @@ class VerbisTerminal {
                 this.printHelp();
                 break;
             case '/clear':
-                // Clear scrollback + screen, then redraw the prompt.
+                // Clear scrollback + screen, then redraw the prompt. This is a
+                // DISPLAY-ONLY operation: it must NOT delete the persisted
+                // conversation or Recent Queries — reopening the assistant restores
+                // the conversation exactly as it was.
                 this.write(`${ESC}[2J${ESC}[3J${ESC}[H`);
                 this.prompt();
                 return; // prompt already printed
@@ -232,9 +279,11 @@ class VerbisTerminal {
                 this.printHistory();
                 break;
             case '/reset':
+                // Start a NEW conversation. The current one is archived (kept
+                // resumable) — /reset never deletes prior chat or Recent Queries.
                 this.session.reset();
                 this.lastSql = null;
-                this.writeln(c(ANSI.fgGreen, 'Conversation reset. Starting fresh.'));
+                this.writeln(c(ANSI.fgGreen, 'Started a new conversation. Your previous chats are saved.'));
                 break;
             case '/cancel':
                 if (this.session.isBusy) {
@@ -303,8 +352,8 @@ class VerbisTerminal {
             ['/status', 'Show backend + session status'],
             ['/model', 'Show the active LLM provider'],
             ['/history', 'Show this conversation\'s turns'],
-            ['/clear', 'Clear the screen'],
-            ['/reset', 'Start a new conversation'],
+            ['/clear', 'Clear the screen (chat + Recent Queries kept)'],
+            ['/reset', 'Start a new conversation (previous chats kept)'],
             ['/cancel', 'Cancel the in-flight request'],
             ['/exit', 'Close the assistant'],
         ];

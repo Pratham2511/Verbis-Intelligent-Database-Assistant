@@ -14,10 +14,14 @@ webview/package.json
 python_backend/__pycache__/**
 python_backend/**/__pycache__/**
 python_backend/**/*.pyc
-python_backend/venv/**
+python_backend/.venv/**
 python_backend/.pytest_cache/**
+**/__pycache__/**
+**/*.pyc
+python_backend/venv/**
 python_backend/.mypy_cache/**
 python_backend/.ruff_cache/**
+.venv/**
 src/**
 node_modules/**
 .gitignore

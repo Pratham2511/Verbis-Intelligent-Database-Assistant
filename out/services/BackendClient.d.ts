@@ -81,6 +81,8 @@ export declare class BackendClient {
         sql: string;
         dbConfigId: string;
         rowLimit?: number;
+        readOnly?: boolean;
+        timeoutSeconds?: number;
     }): Promise<ExecutionResult>;
     getSchema(dbConfigId: string): Promise<{
         tables: SchemaInfo[];

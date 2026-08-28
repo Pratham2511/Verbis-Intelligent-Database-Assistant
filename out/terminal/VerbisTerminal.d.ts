@@ -12,7 +12,18 @@ export declare class VerbisTerminal implements vscode.Pseudoterminal {
     private disposed;
     constructor(session: AssistantSession, getStatus: () => BackendStatus, onExit: () => void);
     open(): void;
+    /**
+     * Render the restored transcript so the user actually sees their prior
+     * conversation (not just a notice). Bounded to the most recent turns to
+     * keep reopening fast; /history shows the full log.
+     */
+    private renderRestoredTranscript;
     close(): void;
+    /**
+     * Load a recalled SQL statement (from Recent Queries) as the pending
+     * executable SQL and show it, so the user can review and /run it directly.
+     */
+    recallSql(sql: string): void;
     handleInput(data: string): void;
     private evaluate;
     private renderReply;

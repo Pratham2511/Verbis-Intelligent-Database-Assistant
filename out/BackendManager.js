@@ -57,19 +57,21 @@ class BackendManager extends events_1.EventEmitter {
     workspacePath;
     pythonExe;
     startPort;
+    getEnvVars;
     process = null;
     port = null;
     client = null;
     crashTimestamps = [];
     status = { state: 'stopped' };
     constructor(backendScriptPath, backendDir, workspacePath, pythonExe, // ← from BackendInstaller
-    startPort = 8765) {
+    startPort = 8765, getEnvVars) {
         super();
         this.backendScriptPath = backendScriptPath;
         this.backendDir = backendDir;
         this.workspacePath = workspacePath;
         this.pythonExe = pythonExe;
         this.startPort = startPort;
+        this.getEnvVars = getEnvVars;
     }
     // ─── Startup ────────────────────────────────────────────────────────
     async start() {
@@ -86,7 +88,8 @@ class BackendManager extends events_1.EventEmitter {
         }
         this.client = new BackendClient_1.BackendClient(`http://127.0.0.1:${this.port}`);
         // Spawn Python process using the resolved pythonExe from BackendInstaller
-        this.process = (0, child_process_1.spawn)(this.pythonExe, [this.backendScriptPath, '--port', String(this.port), '--workspace', this.workspacePath], { cwd: this.backendDir, env: { ...process.env }, detached: false });
+        const extraEnv = this.getEnvVars ? await this.getEnvVars() : {};
+        this.process = (0, child_process_1.spawn)(this.pythonExe, [this.backendScriptPath, '--port', String(this.port), '--workspace', this.workspacePath], { cwd: this.backendDir, env: { ...process.env, ...extraEnv }, detached: false });
         this.process.on('exit', (code, signal) => {
             const wasReady = this.status.state === 'ready';
             console.warn(`[Verbis] Python backend exited: code=${code} signal=${signal}`);

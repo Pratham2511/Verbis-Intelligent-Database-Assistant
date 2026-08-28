@@ -114,13 +114,30 @@ async function activate(context) {
     }
     const workspaceRoot = workspaceFolders[0].uri.fsPath;
     // ─── 2. Initialize workspace service + backend manager ────────────────
-    workspaceService = new WorkspaceService_1.WorkspaceService(workspaceRoot);
+    const backendDir = path.join(context.extensionPath, 'python_backend');
+    workspaceService = new WorkspaceService_1.WorkspaceService(workspaceRoot, backendDir);
     const config = vscode.workspace.getConfiguration('verbis');
     const startPort = config.get('backend.startPort', 8765);
-    const backendDir = path.join(context.extensionPath, 'python_backend');
     const backendScriptPath = path.join(backendDir, 'main.py');
     // Task 2.3: pass installer.pythonExe to BackendManager (4th param)
-    backendManager = new BackendManager_1.BackendManager(backendScriptPath, backendDir, workspaceRoot, installer.pythonExe, startPort);
+    backendManager = new BackendManager_1.BackendManager(backendScriptPath, backendDir, workspaceRoot, installer.pythonExe, startPort, async () => {
+        const envVars = {};
+        try {
+            if (workspaceService && secretsService) {
+                const cfg = await workspaceService.readConfig();
+                for (const conn of cfg.connections) {
+                    const pw = await secretsService.getDbPassword(conn.id);
+                    if (pw) {
+                        envVars[`QM_DB_PASSWORD_${conn.id}`] = pw;
+                    }
+                }
+            }
+        }
+        catch (err) {
+            console.error('Failed to load DB passwords for backend env', err);
+        }
+        return envVars;
+    });
     // Fire-and-forget — don't block activation on backend ready
     backendManager.start().then(status => {
         vscode.window.setStatusBarMessage(`Verbis backend: ${status.state}${status.port ? ` (port ${status.port})` : ''}`, 3000);
@@ -130,7 +147,7 @@ async function activate(context) {
     // under the Verbis activity bar container. Without these registrations the
     // sidebar renders permanently empty sections.
     const connectionsProvider = new SidebarProviders_1.ConnectionsProvider(workspaceService);
-    const schemaTreeProvider = new SidebarProviders_1.SchemaTreeProvider(() => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' });
+    const schemaTreeProvider = new SidebarProviders_1.SchemaTreeProvider(() => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' }, workspaceService);
     const historyProvider = new SidebarProviders_1.HistoryProvider(workspaceService);
     backendManager.on('status', (status) => {
         VerbisPanel_1.VerbisPanel.currentPanel?.postMessage({
@@ -139,6 +156,12 @@ async function activate(context) {
         });
     });
     context.subscriptions.push(vscode.window.registerTreeDataProvider('verbis.connections', connectionsProvider), vscode.window.registerTreeDataProvider('verbis.schema', schemaTreeProvider), vscode.window.registerTreeDataProvider('verbis.history', historyProvider));
+    // Refresh Recent Queries (and related views) immediately whenever persisted
+    // history or conversations change — no reload or backend restart required.
+    context.subscriptions.push(WorkspaceService_1.WorkspaceService.onDidChangeData(() => {
+        historyProvider.refresh();
+        connectionsProvider.refresh();
+    }));
     // Refresh schema tree when backend becomes ready
     backendManager.on('status', (status) => {
         if (status.state === 'ready') {
@@ -189,8 +212,10 @@ async function activate(context) {
             vscode.window.showInformationMessage('Verbis: API key removed.');
         }
     }), 
-    // Fix D (Task 3.5 Step 2) — verbis.selectConnection command
-    vscode.commands.registerCommand('verbis.selectConnection', async () => {
+    // Fix D (Task 3.5 Step 2) — verbis.selectConnection command.
+    // Accepts an optional connection id (from the sidebar tree item); otherwise
+    // shows a QuickPick. Selecting a connection refreshes the Schema view.
+    vscode.commands.registerCommand('verbis.selectConnection', async (connId) => {
         if (!workspaceService)
             return;
         const cfg = await workspaceService.readConfig();
@@ -198,20 +223,62 @@ async function activate(context) {
             vscode.window.showInformationMessage('No connections saved. Run "Verbis: Add Database Connection" first.');
             return;
         }
-        const items = cfg.connections.map(c => ({
-            label: c.name,
-            description: c.dialect,
-            detail: `${c.user}@${c.host}:${c.port}/${c.database}`,
-            id: c.id,
-        }));
-        const picked = await vscode.window.showQuickPick(items, {
-            title: 'Select Database Connection',
-            placeHolder: 'Choose which database to query',
-        });
-        if (picked) {
-            VerbisPanel_1.VerbisPanel.currentPanel?.setActiveConnection(picked.id);
-            vscode.window.setStatusBarMessage(`Verbis: active connection → ${picked.label}`, 3000);
+        let selectedId = connId;
+        let selectedName = cfg.connections.find(c => c.id === connId)?.name;
+        if (!selectedId) {
+            const items = cfg.connections.map(c => ({
+                label: c.name,
+                description: c.dialect,
+                detail: `${c.user}@${c.host}:${c.port}/${c.database}`,
+                id: c.id,
+            }));
+            const picked = await vscode.window.showQuickPick(items, {
+                title: 'Select Database Connection',
+                placeHolder: 'Choose which database to query',
+            });
+            if (!picked)
+                return;
+            selectedId = picked.id;
+            selectedName = picked.label;
         }
+        VerbisPanel_1.VerbisPanel.currentPanel?.setActiveConnection(selectedId);
+        // Make the Schema view reload for the newly selected connection.
+        schemaTreeProvider.setActiveConnection(selectedId);
+        schemaTreeProvider.refresh();
+        vscode.window.setStatusBarMessage(`Verbis: active connection → ${selectedName}`, 3000);
+    }), 
+    // ── Database access UX: reveal / copy / open the resolved SQLite file ──
+    vscode.commands.registerCommand('verbis.revealDatabase', async (arg) => {
+        const resolved = await resolveSqliteArg(arg);
+        if (!resolved)
+            return;
+        // Built-in, cross-platform reveal (no OS-specific shell).
+        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(resolved));
+    }), vscode.commands.registerCommand('verbis.copyDatabasePath', async (arg) => {
+        const resolved = await resolveSqliteArg(arg);
+        if (!resolved)
+            return;
+        await vscode.env.clipboard.writeText(resolved);
+        vscode.window.setStatusBarMessage(`Verbis: database path copied — ${resolved}`, 3000);
+    }), vscode.commands.registerCommand('verbis.openDatabase', async (arg) => {
+        const resolved = await resolveSqliteArg(arg);
+        if (!resolved)
+            return;
+        // Reveal is the safest cross-platform "open" for a binary SQLite file.
+        await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(resolved));
+    }), 
+    // Clicking a Recent Query copies its SQL to the clipboard and opens the
+    // assistant, so the user can paste + review + re-run it. Clipboard is the
+    // reliable, UI-agnostic handoff (works for both terminal and webview).
+    vscode.commands.registerCommand('verbis.recallQuery', async (sql) => {
+        if (!sql)
+            return;
+        // Open/focus the assistant and load the recalled SQL as the pending
+        // executable statement, ready to review and /run. Also copy to the
+        // clipboard as a convenience fallback.
+        await vscode.env.clipboard.writeText(sql);
+        terminalManager?.open(sql);
+        vscode.window.setStatusBarMessage('Verbis: query loaded — type /run to execute', 3000);
     }), vscode.commands.registerCommand('verbis.runLastQuery', async () => {
         if (!workspaceService || !backendManager?.getClient())
             return;
@@ -272,6 +339,11 @@ async function activate(context) {
             port: parseInt(portStr || '5432', 10), database, user,
         });
         await workspaceService.writeConfig(cfg);
+        connectionsProvider?.refresh();
+        if (backendManager) {
+            await backendManager.restart();
+            vscode.window.showInformationMessage('Connection added. Backend restarted to apply changes.');
+        }
         // Fix D + Fix G: auto-set the new connection as active.
         // `id` is the existing variable declared above as `const id = crypto.randomUUID()`.
         // Do NOT invent a new variable name — use `id` directly.
@@ -392,5 +464,38 @@ async function promptForKey(secrets, provider) {
         await secrets.storeGroqKey(key);
     }
     vscode.window.showInformationMessage(`Verbis: ${provider} key saved securely ✓`);
+}
+// ── Database access UX helper ────────────────────────────────────────────────
+// Resolves the SQLite file path for the active connection (or a connection
+// passed from the sidebar context menu). Returns undefined with a user-facing
+// message when the path cannot be determined.
+async function resolveSqliteArg(arg) {
+    if (!workspaceService) {
+        vscode.window.showWarningMessage('Verbis: workspace not ready.');
+        return undefined;
+    }
+    // A TreeItem from the Connections sidebar carries `id: "conn:<id>"`.
+    let connId;
+    if (arg && typeof arg === 'object' && 'id' in arg) {
+        const id = arg.id;
+        if (id?.startsWith('conn:'))
+            connId = id.slice('conn:'.length);
+    }
+    const cfg = await workspaceService.readConfig();
+    const connections = cfg.connections ?? [];
+    // Fall back to the active connection (last in list) when no id was given.
+    const conn = connId
+        ? connections.find(c => c.id === connId)
+        : connections[connections.length - 1];
+    if (!conn) {
+        vscode.window.showWarningMessage('Verbis: no connection selected.');
+        return undefined;
+    }
+    if (conn.dialect !== 'sqlite') {
+        vscode.window.showInformationMessage(`Verbis: "${conn.name}" is a ${conn.dialect} connection — no local file to reveal.`);
+        return undefined;
+    }
+    const resolved = workspaceService.resolveSqlitePath(conn.database);
+    return resolved;
 }
 //# sourceMappingURL=extension.js.map

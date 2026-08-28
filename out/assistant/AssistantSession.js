@@ -55,6 +55,10 @@ class AssistantSession {
     workspace;
     sessionId;
     history = [];
+    /** The most recent user question — used to label persisted query history. */
+    lastUserQuestion = '';
+    /** Connection this conversation is bound to (for restore + history context). */
+    activeConnectionId;
     busy = false;
     abortController = null;
     /**
@@ -281,7 +285,9 @@ class AssistantSession {
         }
         this.busy = true;
         this.abortController = new AbortController();
+        this.lastUserQuestion = nlInput;
         this.history.push({ role: 'user', content: nlInput, timestamp: Date.now() });
+        this.persistTurn('user', nlInput);
         try {
             const provider = this.providerLabel;
             const apiKey = await this.resolveApiKey();
@@ -305,6 +311,7 @@ class AssistantSession {
                 const msg = res.message
                     ?? "I'm Verbis — a database assistant. I can only help with database/SQL questions.";
                 this.history.push({ role: 'assistant', content: msg, timestamp: Date.now() });
+                this.persistTurn('assistant', msg);
                 return { kind: 'offtopic', message: msg };
             }
             // Ambiguity: backend wants clarification before producing SQL.
@@ -313,6 +320,7 @@ class AssistantSession {
                     .map((q, i) => `${i + 1}. ${q.question}\n   Options: ${q.options.join(' | ')}`)
                     .join('\n');
                 this.history.push({ role: 'assistant', content: msg, timestamp: Date.now() });
+                this.persistTurn('assistant', msg);
                 return {
                     kind: 'message',
                     message: `I need clarification:\n${msg}\n\nAnswer and re-ask, or /cancel.`,
@@ -324,6 +332,7 @@ class AssistantSession {
             if (!res.sql) {
                 const msg = res.explanation ?? res.message ?? '(no SQL generated)';
                 this.history.push({ role: 'assistant', content: msg, timestamp: Date.now() });
+                this.persistTurn('assistant', msg);
                 return { kind: 'message', message: msg };
             }
             // Real SQL was generated.
@@ -333,6 +342,7 @@ class AssistantSession {
                 content: res.sql,
                 timestamp: Date.now(),
             });
+            this.persistTurn('assistant', res.sql);
             return {
                 kind: 'sql',
                 sql: res.sql,
@@ -372,23 +382,37 @@ class AssistantSession {
             if (!dbConfigId) {
                 return { kind: 'error', message: 'No active database connection. Add one from the Verbis sidebar.' };
             }
-            const rowLimit = vscode.workspace
-                .getConfiguration('verbis')
-                .get('query.rowLimit', 500);
-            const result = await client.execute({ sql, dbConfigId, rowLimit });
+            // Read execution settings fresh on every /run so changes take effect
+            // immediately without a backend restart.
+            const verbisCfg = vscode.workspace.getConfiguration('verbis');
+            const rowLimit = verbisCfg.get('query.rowLimit', 500);
+            const readOnly = verbisCfg.get('execution.readOnlyByDefault', true);
+            const timeoutSeconds = verbisCfg.get('execution.timeoutSeconds', 60);
+            const result = await client.execute({ sql, dbConfigId, rowLimit, readOnly, timeoutSeconds });
             if (this.abortController.signal.aborted) {
                 return { kind: 'cancelled', message: 'Execution cancelled.' };
             }
-            // Persist to history via the existing workspace service.
+            // Resolve connection context for Recent Queries (never secrets).
+            const connName = await this.resolveConnectionName(dbConfigId);
+            // Persist to history via the existing workspace service. Use the real
+            // user question (not a placeholder) so Recent Queries is meaningful.
             await this.workspace.appendHistory({
                 id: crypto.randomUUID(),
-                nlInput: '(terminal)',
+                nlInput: this.lastUserQuestion || '(query)',
                 sql,
                 timestamp: Date.now(),
                 success: true,
                 executionTimeMs: result.executionTimeMs,
                 rowCount: result.rowCount,
+                connectionId: dbConfigId,
+                connectionName: connName,
             });
+            // Persist a concise execution summary as an assistant turn so the
+            // restored conversation reflects what actually ran (no row data, so no
+            // sensitive values are stored).
+            const summary = `✓ Executed (${result.executionTimeMs}ms, ${result.rowCount} row${result.rowCount === 1 ? '' : 's'})`;
+            this.history.push({ role: 'assistant', content: summary, timestamp: Date.now() });
+            this.persistTurn('assistant', summary);
             return { kind: 'result', result };
         }
         catch (err) {
@@ -411,12 +435,81 @@ class AssistantSession {
      * Also discards any session-specific API key and resets the credential
      * choice, so the next session re-prompts for the key source.
      */
+    /**
+     * Start a NEW conversation. The current conversation is archived (persisted
+     * under its own id) so it remains resumable — /reset never deletes prior
+     * chat history. A fresh session id is generated for the new thread.
+     */
     reset() {
         this.cancel();
+        // Archive the current conversation before switching to a new id.
+        if (this.history.length > 0) {
+            const turns = this.history.map(h => ({
+                role: h.role,
+                content: h.content,
+                timestamp: h.timestamp,
+            }));
+            void this.workspace
+                .upsertConversation(this.sessionId, turns, { connectionId: this.activeConnectionId })
+                .catch(() => { });
+        }
         this.sessionId = AssistantSession.newSessionId();
         this.history = [];
+        this.lastUserQuestion = '';
+        this.activeConnectionId = undefined;
         this.busy = false;
         this.discardSessionKey();
+        // Point the active pointer at the new (empty) conversation.
+        void this.workspace.setActiveConversation(this.sessionId).catch(() => { });
+    }
+    /**
+     * Persist the full transcript into the active conversation. Fire-and-forget:
+     * failures are swallowed so a disk hiccup never breaks the chat flow.
+     * Writing the whole array (rather than appending) keeps the operation
+     * atomic and avoids read-modify-write races between rapid turns.
+     */
+    persistTurn(_role, _content) {
+        const turns = this.history.map(h => ({
+            role: h.role,
+            content: h.content,
+            timestamp: h.timestamp,
+        }));
+        void this.workspace
+            .upsertConversation(this.sessionId, turns, {
+            connectionId: this.activeConnectionId,
+        })
+            .catch(() => {
+            /* fail-safe: persistence is best-effort */
+        });
+    }
+    /**
+     * Restore the active persisted conversation into the local transcript and
+     * adopt its session id so the backend keeps conversational continuity.
+     * Returns the number of turns restored (0 when none). Fail-safe: any read
+     * error yields an empty transcript rather than throwing.
+     */
+    async restoreLastSession() {
+        try {
+            const conv = await this.workspace.getActiveConversation();
+            if (!conv || !Array.isArray(conv.turns) || conv.turns.length === 0)
+                return 0;
+            // Adopt the persisted session id so the backend continues this thread.
+            this.sessionId = conv.id;
+            this.activeConnectionId = conv.connectionId;
+            this.history = conv.turns.map(t => ({
+                role: t.role,
+                content: t.content,
+                timestamp: t.timestamp,
+            }));
+            // Seed lastUserQuestion from the most recent user turn so a follow-up
+            // /run is labelled correctly.
+            const lastUser = [...conv.turns].reverse().find(t => t.role === 'user');
+            this.lastUserQuestion = lastUser?.content ?? '';
+            return conv.turns.length;
+        }
+        catch {
+            return 0;
+        }
     }
     /**
      * Discard the session-specific API key (if any) and reset the credential
@@ -430,10 +523,33 @@ class AssistantSession {
     }
     // ─── Internals ──────────────────────────────────────────────────────────
     async resolveActiveConnectionId() {
+        // Prefer the connection this conversation is bound to (restored or set).
+        if (this.activeConnectionId)
+            return this.activeConnectionId;
         const config = await this.workspace.readConfig();
         // The workspace config has no explicit "active" pointer; the most recently
         // added connection is treated as active, consistent with the sidebar.
-        return config.connections[config.connections.length - 1]?.id;
+        const id = config.connections[config.connections.length - 1]?.id;
+        this.activeConnectionId = id;
+        return id;
+    }
+    /** Human-readable connection name for history context (never secrets). */
+    async resolveConnectionName(id) {
+        try {
+            const config = await this.workspace.readConfig();
+            return config.connections.find(c => c.id === id)?.name;
+        }
+        catch {
+            return undefined;
+        }
+    }
+    /**
+     * @deprecated `/clear` only clears the visible screen now — it must NOT
+     * delete persisted conversation history. Retained as a no-op for backward
+     * compatibility with the terminal's /clear handler.
+     */
+    async clearPersistedSession() {
+        /* no-op: /clear is screen-only; history is preserved */
     }
     static describeError(err) {
         if (err instanceof BackendClient_1.BackendClientError) {

@@ -51,6 +51,10 @@ export declare class AssistantSession {
     private readonly workspace;
     private sessionId;
     private history;
+    /** The most recent user question — used to label persisted query history. */
+    private lastUserQuestion;
+    /** Connection this conversation is bound to (for restore + history context). */
+    private activeConnectionId;
     private busy;
     private abortController;
     /**
@@ -137,7 +141,26 @@ export declare class AssistantSession {
      * Also discards any session-specific API key and resets the credential
      * choice, so the next session re-prompts for the key source.
      */
+    /**
+     * Start a NEW conversation. The current conversation is archived (persisted
+     * under its own id) so it remains resumable — /reset never deletes prior
+     * chat history. A fresh session id is generated for the new thread.
+     */
     reset(): void;
+    /**
+     * Persist the full transcript into the active conversation. Fire-and-forget:
+     * failures are swallowed so a disk hiccup never breaks the chat flow.
+     * Writing the whole array (rather than appending) keeps the operation
+     * atomic and avoids read-modify-write races between rapid turns.
+     */
+    private persistTurn;
+    /**
+     * Restore the active persisted conversation into the local transcript and
+     * adopt its session id so the backend keeps conversational continuity.
+     * Returns the number of turns restored (0 when none). Fail-safe: any read
+     * error yields an empty transcript rather than throwing.
+     */
+    restoreLastSession(): Promise<number>;
     /**
      * Discard the session-specific API key (if any) and reset the credential
      * choice. Called on /reset, /exit, terminal close, and window reload so a
@@ -145,6 +168,14 @@ export declare class AssistantSession {
      */
     discardSessionKey(): void;
     private resolveActiveConnectionId;
+    /** Human-readable connection name for history context (never secrets). */
+    private resolveConnectionName;
+    /**
+     * @deprecated `/clear` only clears the visible screen now — it must NOT
+     * delete persisted conversation history. Retained as a no-op for backward
+     * compatibility with the terminal's /clear handler.
+     */
+    clearPersistedSession(): Promise<void>;
     private static describeError;
 }
 export {};
