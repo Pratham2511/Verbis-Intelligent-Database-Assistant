@@ -46,8 +46,16 @@ async def execute(req: ExecuteRequest, request: Request) -> Dict[str, Any]:
     )
     if effective_read_only:
         from services.validator_service import Validator
-        validator = Validator()
-        if not validator.is_read_only(req.sql):
+        # Use the connection's real dialect so the read-only classification
+        # parses the script correctly (sqlglot name: 'postgres' not 'postgresql').
+        try:
+            engine_dialect = pool.dialect.name
+        except Exception:
+            engine_dialect = 'postgresql'
+        sqlglot_dialect = 'postgres' if engine_dialect == 'postgresql' else engine_dialect
+        validator = Validator(dialect=sqlglot_dialect)
+        # Script-aware: EVERY statement must be read-only, not just the first.
+        if not validator.is_read_only_script(req.sql):
             raise HTTPException(
                 403,
                 detail=(

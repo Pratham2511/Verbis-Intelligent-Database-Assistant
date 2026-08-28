@@ -41,12 +41,13 @@ class SQLGenerator:
         schema: List[dict],
         memory: MemoryData,
         use_cloud: bool = True,
+        dialect: str = 'postgresql',
     ) -> List[SQLCandidate]:
         """Run all three paths in parallel."""
         tasks = [
-            self._generate_path(nl_input, schema, memory, 'direct', use_cloud),
-            self._generate_path(nl_input, schema, memory, 'cot', use_cloud),
-            self._generate_path(nl_input, schema, memory, 'skeleton', use_cloud),
+            self._generate_path(nl_input, schema, memory, 'direct', use_cloud, dialect),
+            self._generate_path(nl_input, schema, memory, 'cot', use_cloud, dialect),
+            self._generate_path(nl_input, schema, memory, 'skeleton', use_cloud, dialect),
         ]
         results = await asyncio.gather(*tasks, return_exceptions=True)
 
@@ -71,9 +72,10 @@ class SQLGenerator:
         memory: MemoryData,
         strategy: str,
         use_cloud: bool,
+        dialect: str = 'postgresql',
     ) -> str:
         system, user = build_generation_prompt(nl_input, schema, memory,
-                                                dialect='postgresql',
+                                                dialect=dialect,
                                                 strategy=strategy)
         resp = await self.llm.complete(system, user, use_cloud=use_cloud)
         if resp.error:

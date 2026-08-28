@@ -70,7 +70,11 @@ Rules:
 2. Always add LIMIT unless the user explicitly asks for all rows.
 3. Add brief SQL comments for complex joins or subqueries.
 4. If the question is ambiguous, ask a clarifying question instead of guessing.
-5. Return ONLY the SQL. No markdown fences. No explanation unless asked."""
+5. Write SQL that is valid for the specified dialect. Use that dialect's catalog
+   and metadata facilities (e.g. SQLite: sqlite_master/sqlite_schema; PostgreSQL:
+   information_schema/pg_catalog; MySQL: information_schema; SQL Server:
+   INFORMATION_SCHEMA/sys). Never use another dialect's catalog tables.
+6. Return ONLY the SQL. No markdown fences. No explanation unless asked."""
 
 
 async def generate_sql(

@@ -95,3 +95,31 @@ class Validator:
         if isinstance(ast, exp.Command) and ast.this.upper() == 'EXPLAIN':
             return True
         return False
+
+    # ─── Read-only check for multi-statement scripts ──────────────────
+    def is_read_only_script(self, sql: str) -> bool:
+        """Return True only if EVERY statement in the script is read-only.
+
+        ``is_read_only`` uses ``parse_one``, which inspects only the first
+        statement — so ``CREATE TABLE ...; INSERT ...`` would be misjudged by
+        looking at just the CREATE. For scripts, parse ALL statements and
+        require each one to be read-only.
+        """
+        if not SQLGLOT_AVAILABLE:
+            return self.is_read_only(sql)
+        try:
+            expressions = sqlglot.parse(sql, read=self.dialect)
+        except Exception:
+            return False
+        statements = [e for e in expressions if e is not None]
+        if not statements:
+            return False
+        for ast in statements:
+            if isinstance(ast, exp.Select):
+                continue
+            if isinstance(ast, exp.With) and isinstance(ast.this, exp.Select):
+                continue
+            if isinstance(ast, exp.Command) and ast.this.upper() == 'EXPLAIN':
+                continue
+            return False
+        return True

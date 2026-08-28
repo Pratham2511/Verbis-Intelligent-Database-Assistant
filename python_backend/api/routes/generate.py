@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from models.requests import GenerateRequest
 from services.llm_service import (
     DEFAULT_GEMINI_MODEL,
@@ -7,6 +7,7 @@ from services.llm_service import (
     generate_nosql,
 )
 from services.intent_service import classify_intent, clear_intent_cache
+from services.dialect_service import resolve_dialect
 
 router = APIRouter()
 
@@ -76,7 +77,7 @@ def _friendly_generation_error(exc: Exception, provider: str = "", model: str = 
 
 
 @router.post("/generate")
-async def generate(req: GenerateRequest):
+async def generate(req: GenerateRequest, request: Request):
     # ── Intent Guard: block off-topic queries before SQL generation ──
     intent, offtopic_msg = await classify_intent(
         user_message=req.nl_query,
@@ -107,7 +108,9 @@ async def generate(req: GenerateRequest):
             result = await generate_sql(
                 nl_query=req.nl_query,
                 schema_context=req.schema_context,
-                dialect=req.dialect,
+                dialect=resolve_dialect(
+                    request.app.state.qm.db_pools, req.db_config_id, req.dialect
+                ),
                 provider=req.provider,
                 api_key=req.api_key,
                 model=req.model,
