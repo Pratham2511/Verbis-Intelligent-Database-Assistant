@@ -214,8 +214,10 @@ class VerbisTerminal {
                 // SQL was actually generated — store it and show it before /run guidance.
                 if (reply.sql) {
                     this.lastSql = reply.sql;
-                    this.writeln(c(ANSI.fgGreen + ANSI.bold, 'SQL:'));
+                    this.writeln(`${c(ANSI.fgGreen, '✓')} ${c(ANSI.fgGray, 'SQL generated')}`);
+                    this.writeln(c(ANSI.fgCyan, '── SQL ────────────────────────────────'));
                     this.writeln(this.indent(this.highlightSql(reply.sql)));
+                    this.writeln(c(ANSI.fgCyan, '────────────────────────────────────────'));
                     this.writeln('');
                 }
                 if (reply.explanation) {
@@ -236,8 +238,8 @@ class VerbisTerminal {
             }
             case 'offtopic':
                 // Scope rejection — polite refusal, no fake confidence, no /run guidance.
-                this.writeln(c(ANSI.fgYellow, reply.message
-                    ?? 'Verbis is restricted to database/SQL-related assistance.'));
+                this.writeln(`${c(ANSI.fgYellow, '◇')} ${c(ANSI.fgYellow, reply.message
+                    ?? 'Verbis is restricted to database/SQL-related assistance.')}`);
                 break;
             case 'message':
                 if (reply.message) {
@@ -245,7 +247,7 @@ class VerbisTerminal {
                 }
                 break;
             case 'error':
-                this.writeln(c(ANSI.fgRed, `✗ ${reply.message ?? 'Unknown error'}`));
+                this.writeln(`${c(ANSI.fgRed, '✗')} ${c(ANSI.fgRed, reply.message ?? 'Unknown error')}`);
                 break;
             case 'cancelled':
                 this.writeln(c(ANSI.fgYellow, 'Cancelled.'));
@@ -271,10 +273,13 @@ class VerbisTerminal {
             case '/status':
                 this.printStatus();
                 break;
-            case '/model':
-                this.writeln(`Provider: ${c(ANSI.bold, this.session.providerLabel)}`);
-                this.writeln(c(ANSI.fgGray, 'Change via "Verbis: Set API Key" or the verbis.llm.provider setting.'));
+            case '/model': {
+                const snap = await this.session.getStatusSnapshot();
+                this.writeln(`  ${c(ANSI.fgGray, '◇')} ${c(ANSI.fgGray, 'provider'.padEnd(9))} ${snap.provider}`);
+                this.writeln(`  ${c(ANSI.fgGray, '◇')} ${c(ANSI.fgGray, 'model'.padEnd(9))} ${snap.model}`);
+                this.writeln(c(ANSI.fgGray, 'Change via "Verbis: Set API Key" or the verbis.llm.provider / model settings.'));
                 break;
+            }
             case '/history':
                 this.printHistory();
                 break;
@@ -320,6 +325,13 @@ class VerbisTerminal {
             this.prompt();
             return;
         }
+        // Client-side write-operation hint (the backend is the real enforcer). This
+        // only affects how we PRESENT the outcome — never whether it runs.
+        const isWrite = /\b(INSERT|UPDATE|DELETE|DROP|ALTER|CREATE|TRUNCATE|REPLACE|GRANT|REVOKE)\b/i
+            .test(this.lastSql);
+        if (isWrite && this.session.readOnlyMode) {
+            this.writeln(`${c(ANSI.fgYellow, '⚠')} ${c(ANSI.fgYellow, 'Write operation detected')}`);
+        }
         this.writeln(c(ANSI.fgGray, 'Executing…'));
         const outcome = await this.session.execute(this.lastSql);
         if (outcome.kind === 'result' && outcome.result) {
@@ -329,35 +341,77 @@ class VerbisTerminal {
             this.writeln(c(ANSI.fgYellow, 'Execution cancelled.'));
         }
         else {
-            this.writeln(c(ANSI.fgRed, `✗ ${outcome.message ?? 'Execution failed'}`));
+            const msg = outcome.message ?? 'Execution failed';
+            // Present read-only blocks distinctly from generic errors.
+            if (/read-only|write queries are blocked/i.test(msg)) {
+                this.writeln(`${c(ANSI.fgRed, '✗')} ${c(ANSI.fgRed, 'Execution blocked')}`);
+                this.writeln(c(ANSI.fgGray, `  ${msg}`));
+            }
+            else {
+                this.writeln(`${c(ANSI.fgRed, '✗')} ${c(ANSI.fgRed, 'Query failed')}`);
+                this.writeln(c(ANSI.fgGray, `  ${msg}`));
+            }
         }
         this.prompt();
     }
     // ─── Output rendering ───────────────────────────────────────────────────
     printBanner() {
         const status = this.getStatus();
-        const statusText = status.state === 'ready'
-            ? c(ANSI.fgGreen, '● backend ready')
-            : c(ANSI.fgYellow, `● backend ${status.state}`);
-        this.writeln(c(ANSI.fgCyan + ANSI.bold, 'Verbis Assistant'));
-        this.writeln(c(ANSI.fgGray, 'Ask questions in plain English — Verbis generates SQL.'));
-        this.writeln(`${statusText}  ${c(ANSI.fgGray, '·')}  provider: ${c(ANSI.bold, this.session.providerLabel)}`);
-        this.writeln(c(ANSI.fgGray, '/help for commands · Ctrl+C to cancel · /exit to close'));
+        const dot = status.state === 'ready'
+            ? c(ANSI.fgGreen, '●')
+            : status.state === 'starting'
+                ? c(ANSI.fgYellow, '●')
+                : c(ANSI.fgRed, '●');
+        this.writeln(c(ANSI.fgCyan, '╭─────────────────────────────────────────────────────────╮'));
+        this.writeln(c(ANSI.fgCyan, '│') + c(ANSI.bold + ANSI.fgCyan, '  Verbis Assistant') + c(ANSI.fgCyan, '                                         │'));
+        this.writeln(c(ANSI.fgCyan, '│') + c(ANSI.fgGray, '  Ask questions in plain English — Verbis writes the SQL') + c(ANSI.fgCyan, '  │'));
+        this.writeln(c(ANSI.fgCyan, '╰─────────────────────────────────────────────────────────╯'));
+        this.writeln(`  ${dot} ${c(ANSI.fgGray, `backend ${status.state}`)}`);
+        // Live status lines (provider/model/connection/schema/mode) are rendered
+        // asynchronously from current state — never hardcoded.
+        void this.renderStatusLines();
+        this.writeln(c(ANSI.fgGray, '  /help commands · Ctrl+C cancel · /exit close'));
         this.writeln('');
+    }
+    /**
+     * Render the live status block (connection, dialect, schema, provider, model,
+     * mode). Everything is read from current app state via getStatusSnapshot(), so
+     * it reflects provider/model/connection/schema/mode changes immediately.
+     */
+    async renderStatusLines() {
+        const snap = await this.session.getStatusSnapshot();
+        const line = (label, value) => this.writeln(`  ${c(ANSI.fgGray, '◇')} ${c(ANSI.fgGray, label.padEnd(11))} ${value}`);
+        if (snap.connectionName || snap.dialect) {
+            const conn = [snap.connectionName, snap.dialect ? c(ANSI.fgGray, `(${snap.dialect})`) : '']
+                .filter(Boolean).join(' ');
+            line('Connection', conn);
+        }
+        if (snap.database) {
+            line('Database', snap.database);
+        }
+        if (snap.tableCount !== undefined) {
+            const cols = snap.columnCount !== undefined ? ` · ${snap.columnCount} columns` : '';
+            line('Schema', `${snap.tableCount} table(s)${cols}`);
+        }
+        line('AI Provider', snap.provider);
+        line('Model', snap.model);
+        line('Mode', snap.readOnly
+            ? c(ANSI.fgGreen, 'Read-only')
+            : c(ANSI.fgYellow, 'Write enabled'));
     }
     printHelp() {
         const rows = [
             ['/help', 'Show this help'],
             ['/run', 'Execute the last generated SQL'],
             ['/status', 'Show backend + session status'],
-            ['/model', 'Show the active LLM provider'],
+            ['/model', 'Show the active LLM provider + model'],
             ['/history', 'Show this conversation\'s turns'],
             ['/clear', 'Clear the screen (chat + Recent Queries kept)'],
             ['/reset', 'Start a new conversation (previous chats kept)'],
             ['/cancel', 'Cancel the in-flight request'],
             ['/exit', 'Close the assistant'],
         ];
-        this.writeln(c(ANSI.bold, 'Commands:'));
+        this.writeln(c(ANSI.fgCyan, '── Commands ────────────────────────────'));
         for (const [cmd, desc] of rows) {
             this.writeln(`  ${c(ANSI.fgCyan, cmd.padEnd(10))} ${c(ANSI.fgGray, desc)}`);
         }
@@ -366,13 +420,18 @@ class VerbisTerminal {
     }
     printStatus() {
         const s = this.getStatus();
-        this.writeln(c(ANSI.bold, 'Status:'));
-        this.writeln(`  backend     ${s.state}${s.port ? ` (port ${s.port})` : ''}`);
-        this.writeln(`  provider    ${this.session.providerLabel}`);
-        this.writeln(`  credential  ${this.session.credentialSourceLabel}`);
-        this.writeln(`  session     ${this.session.id.slice(0, 8)}…`);
-        this.writeln(`  turns       ${this.session.transcript.length}`);
-        this.writeln(`  busy        ${this.session.isBusy ? 'yes' : 'no'}`);
+        const dot = s.state === 'ready'
+            ? c(ANSI.fgGreen, '●')
+            : s.state === 'starting'
+                ? c(ANSI.fgYellow, '●')
+                : c(ANSI.fgRed, '●');
+        this.writeln(c(ANSI.fgCyan, '── Status ──────────────────────────────'));
+        this.writeln(`  ${dot} ${c(ANSI.fgGray, 'backend')}    ${s.state}${s.port ? c(ANSI.fgGray, ` (port ${s.port})`) : ''}`);
+        // Live connection/provider/model/schema/mode lines from current state.
+        void this.renderStatusLines();
+        this.writeln(`  ${c(ANSI.fgGray, '◇')} ${c(ANSI.fgGray, 'credential'.padEnd(11))} ${this.session.credentialSourceLabel}`);
+        this.writeln(`  ${c(ANSI.fgGray, '◇')} ${c(ANSI.fgGray, 'session'.padEnd(11))} ${this.session.id.slice(0, 8)}… · ${this.session.transcript.length} turn(s)`);
+        this.writeln(`  ${c(ANSI.fgGray, '◇')} ${c(ANSI.fgGray, 'busy'.padEnd(11))} ${this.session.isBusy ? 'yes' : 'no'}`);
     }
     printHistory() {
         const t = this.session.transcript;
@@ -390,29 +449,42 @@ class VerbisTerminal {
         }
     }
     printResultTable(r) {
-        this.writeln(c(ANSI.fgGreen, `✓ ${r.rowCount} row(s) in ${r.executionTimeMs} ms`));
+        this.writeln(`${c(ANSI.fgGreen, '✓')} ${c(ANSI.fgGray, `${r.rowCount} row(s) in ${r.executionTimeMs} ms`)}`);
         if (r.columns.length === 0) {
+            this.writeln(c(ANSI.fgGray, '  (no columns returned)'));
+            return;
+        }
+        if (r.rowCount === 0) {
+            this.writeln(c(ANSI.fgGray, '  (0 rows)'));
             return;
         }
         const rows = r.rows.slice(0, MAX_RESULT_ROWS);
+        // Dynamic column widths from actual content, capped for readability.
         const widths = r.columns.map(col => Math.min(MAX_CELL_WIDTH, Math.max(col.length, ...rows.map(row => this.cellText(row[col]).length))));
-        const sep = '─';
-        const header = r.columns.map((col, i) => c(ANSI.bold, col.padEnd(widths[i]))).join(' ┬ ');
-        this.writeln(header);
-        this.writeln(widths.map(w => sep.repeat(w)).join('─┼─'));
+        const trunc = (text, w) => text.length > w ? text.slice(0, w - 1) + '…' : text.padEnd(w);
+        const top = '┌' + widths.map(w => '─'.repeat(w + 2)).join('┬') + '┐';
+        const mid = '├' + widths.map(w => '─'.repeat(w + 2)).join('┼') + '┤';
+        const bot = '└' + widths.map(w => '─'.repeat(w + 2)).join('┴') + '┘';
+        this.writeln(c(ANSI.fgGray, top));
+        this.writeln(c(ANSI.fgGray, '│') +
+            r.columns.map((col, i) => ' ' + c(ANSI.bold, trunc(col, widths[i])) + ' ').join(c(ANSI.fgGray, '│')) +
+            c(ANSI.fgGray, '│'));
+        this.writeln(c(ANSI.fgGray, mid));
         for (const row of rows) {
-            this.writeln(r.columns.map((col, i) => {
-                const text = this.cellText(row[col]);
-                return text.length > widths[i]
-                    ? text.slice(0, widths[i] - 1) + '…'
-                    : text.padEnd(widths[i]);
-            }).join(' │ '));
+            this.writeln(c(ANSI.fgGray, '│') +
+                r.columns.map((col, i) => {
+                    const text = this.cellText(row[col]);
+                    const rendered = text === 'NULL' ? c(ANSI.fgGray, trunc(text, widths[i])) : trunc(text, widths[i]);
+                    return ' ' + rendered + ' ';
+                }).join(c(ANSI.fgGray, '│')) +
+                c(ANSI.fgGray, '│'));
         }
+        this.writeln(c(ANSI.fgGray, bot));
         if (r.rowCount > MAX_RESULT_ROWS) {
-            this.writeln(c(ANSI.fgGray, `… ${r.rowCount - MAX_RESULT_ROWS} more row(s) truncated`));
+            this.writeln(c(ANSI.fgGray, `  … ${r.rowCount - MAX_RESULT_ROWS} more row(s) truncated`));
         }
         if (r.truncated) {
-            this.writeln(c(ANSI.fgYellow, '(result truncated by row limit)'));
+            this.writeln(c(ANSI.fgYellow, '  ⚠ result truncated by row limit'));
         }
     }
     cellText(v) {

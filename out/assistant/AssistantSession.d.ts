@@ -103,6 +103,26 @@ export declare class AssistantSession {
     private warnIfRetiredGeminiModel;
     /** Human-readable credential source for /status — never reveals the key. */
     get credentialSourceLabel(): string;
+    /** Active model label for display (mirrors what is sent to the backend). */
+    get modelLabel(): string;
+    /** True when execution is in read-only mode (read live from settings). */
+    get readOnlyMode(): boolean;
+    /**
+     * A live snapshot of everything the terminal header/status needs, read fresh
+     * from settings + workspace state on every call so the UI always reflects the
+     * current provider/model/connection/schema/mode — never a cached or hardcoded
+     * value. Fields fall back to undefined when no connection/schema is available.
+     */
+    getStatusSnapshot(): Promise<{
+        provider: string;
+        model: string;
+        readOnly: boolean;
+        connectionName?: string;
+        dialect?: string;
+        database?: string;
+        tableCount?: number;
+        columnCount?: number;
+    }>;
     /**
      * Resolve the API key for this turn. A session-specific key (if the user
      * set one) takes precedence over the configured key; otherwise the

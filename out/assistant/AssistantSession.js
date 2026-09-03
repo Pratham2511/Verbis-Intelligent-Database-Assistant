@@ -172,6 +172,54 @@ class AssistantSession {
             default: return 'Not chosen yet';
         }
     }
+    /** Active model label for display (mirrors what is sent to the backend). */
+    get modelLabel() {
+        return this.resolveModel() ?? 'default';
+    }
+    /** True when execution is in read-only mode (read live from settings). */
+    get readOnlyMode() {
+        return vscode.workspace
+            .getConfiguration('verbis')
+            .get('execution.readOnlyByDefault', true);
+    }
+    /**
+     * A live snapshot of everything the terminal header/status needs, read fresh
+     * from settings + workspace state on every call so the UI always reflects the
+     * current provider/model/connection/schema/mode — never a cached or hardcoded
+     * value. Fields fall back to undefined when no connection/schema is available.
+     */
+    async getStatusSnapshot() {
+        const snapshot = {
+            provider: this.providerLabel,
+            model: this.modelLabel,
+            readOnly: this.readOnlyMode,
+            connectionName: undefined,
+            dialect: undefined,
+            database: undefined,
+            tableCount: undefined,
+            columnCount: undefined,
+        };
+        try {
+            const config = await this.workspace.readConfig();
+            const connId = await this.resolveActiveConnectionId();
+            const conn = config.connections.find(c => c.id === connId)
+                ?? config.connections[config.connections.length - 1];
+            if (conn) {
+                snapshot.connectionName = conn.name;
+                snapshot.dialect = conn.dialect;
+                snapshot.database = conn.database;
+            }
+            const schema = await this.workspace.readSchemaCache();
+            if (Array.isArray(schema) && schema.length > 0) {
+                snapshot.tableCount = schema.length;
+                snapshot.columnCount = schema.reduce((n, t) => n + (Array.isArray(t.columns) ? t.columns.length : 0), 0);
+            }
+        }
+        catch {
+            // Best-effort: a missing/partial snapshot must never break the terminal.
+        }
+        return snapshot;
+    }
     /**
      * Resolve the API key for this turn. A session-specific key (if the user
      * set one) takes precedence over the configured key; otherwise the

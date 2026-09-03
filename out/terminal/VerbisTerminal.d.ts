@@ -30,6 +30,12 @@ export declare class VerbisTerminal implements vscode.Pseudoterminal {
     private handleCommand;
     private runLastSql;
     private printBanner;
+    /**
+     * Render the live status block (connection, dialect, schema, provider, model,
+     * mode). Everything is read from current app state via getStatusSnapshot(), so
+     * it reflects provider/model/connection/schema/mode changes immediately.
+     */
+    private renderStatusLines;
     private printHelp;
     private printStatus;
     private printHistory;

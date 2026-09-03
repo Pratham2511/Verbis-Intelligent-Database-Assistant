@@ -12,6 +12,49 @@ from services.dialect_service import resolve_dialect
 router = APIRouter()
 
 
+def _build_schema_context(state, db_config_id, nl_query: str) -> str:
+    """Build a schema context string for the LLM when the client didn't send one.
+
+    The extension currently posts ``schema_context: ''`` (it only ever fills it
+    with disambiguation answers), so without this fallback the LLM prompt's
+    ``Schema:`` section is empty and the assistant asks the user for the schema
+    even though the backend already has it. Build the context from the live
+    connection's introspected schema; fall back to the ChromaDB RAG index when
+    introspection is unavailable. Returns '' only when nothing is available.
+    """
+    if not db_config_id:
+        return ''
+    try:
+        pool = state.db_pools.get(db_config_id)
+    except Exception:
+        pool = None
+    if pool is None:
+        return ''
+
+    # Preferred: live introspection (same logic as GET /api/schema).
+    try:
+        from api.routes.schema import _introspect_schema
+        tables = _introspect_schema(pool, state.workspace_path, state)
+        if tables:
+            lines = []
+            for t in tables:
+                cols = ', '.join(f"{c['name']} {c['type']}" for c in t.get('columns', []))
+                lines.append(f"Table {t['tableName']}: {cols}")
+            return '\n'.join(lines)
+    except Exception:
+        pass
+
+    # Fallback: RAG-indexed schema chunks relevant to the question.
+    try:
+        chunks = state.rag.retrieve_relevant(nl_query)
+        docs = [c.get('doc') for c in chunks if c.get('doc')]
+        if docs:
+            return '\n'.join(docs)
+    except Exception:
+        pass
+    return ''
+
+
 def _retired_model_error(provider: str, model: str) -> HTTPException:
     """Build a clear, actionable error for a model the provider has retired.
 
@@ -95,11 +138,19 @@ async def generate(req: GenerateRequest, request: Request):
         }
 
     # ── Normal SQL/NoSQL generation ──────────────────────────────────
+    # If the client didn't supply a schema context (the extension currently
+    # sends ''), build one from the registered connection so the LLM always
+    # sees the real schema instead of asking the user for it.
+    schema_context = req.schema_context
+    if not schema_context or not schema_context.strip():
+        schema_context = _build_schema_context(
+            request.app.state.qm, req.db_config_id, req.nl_query
+        )
     try:
         if req.query_type == "nosql":
             result = await generate_nosql(
                 nl_query=req.nl_query,
-                schema_context=req.schema_context,
+                schema_context=schema_context,
                 provider=req.provider,
                 api_key=req.api_key,
                 model=req.model,
@@ -107,7 +158,7 @@ async def generate(req: GenerateRequest, request: Request):
         else:
             result = await generate_sql(
                 nl_query=req.nl_query,
-                schema_context=req.schema_context,
+                schema_context=schema_context,
                 dialect=resolve_dialect(
                     request.app.state.qm.db_pools, req.db_config_id, req.dialect
                 ),

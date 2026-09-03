@@ -24,7 +24,9 @@ async def analyze_impact(req: ImpactRequest, request: Request) -> Dict[str, Any]
     predictor = SchemaImpactPredictor(state.history_store)
     try:
         impact = predictor.predict(req.proposed_ddl, db_config_id='default')
-        return impact
+        # predict() returns an ImpactResponse Pydantic model; serialize to a dict
+        # to satisfy the Dict[str, Any] response type.
+        return impact.model_dump()
     except Exception as exc:
         logger.error(f'Impact analysis failed: {exc}')
         raise HTTPException(500, detail=f'Impact analysis failed: {exc}')

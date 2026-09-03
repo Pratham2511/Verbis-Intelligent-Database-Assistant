@@ -28,9 +28,10 @@ async def run_robustness(req: RobustnessRequest, request: Request) -> Dict[str, 
     state = request.app.state.qm
     tester = RobustnessTester(state.history_store)
     try:
-        # Adapt our internal query item shape to what RobustnessTester expects
-        adapted = [{'id': q.id, 'sql': q.sql, 'nlInput': q.nlInput} for q in req.querySet]
-        return tester.run_perturbations(adapted)
+        # RobustnessTester.run_perturbations accesses .id/.sql/.nlInput attributes,
+        # so pass the parsed RobustnessQueryItem models directly (not plain dicts).
+        report = tester.run_perturbations(list(req.querySet))
+        return report.model_dump()
     except Exception as exc:
         logger.error(f'Robustness test failed: {exc}')
         raise HTTPException(500, detail=f'Robustness test failed: {exc}')

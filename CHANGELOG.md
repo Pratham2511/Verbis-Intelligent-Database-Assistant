@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.3.0] — 2026-09-03
+
+A redesigned, fully dynamic assistant terminal, a natural-language schema-context fix, and keyboard-shortcut conflict resolutions.
+
+### Improved
+
+- **Redesigned assistant terminal.** The Verbis terminal now opens with a clean, modern header and a live status panel that always reflects current state — active connection (name and dialect), database, schema size (table/column counts), AI provider, model, and execution mode (read-only vs. write). Nothing is hard-coded; every line is rendered from the current session, connection, and workspace schema cache.
+- **Clearer query results.** Result sets render as properly aligned box-drawing tables with dynamic column widths, `NULL` styling, long-value truncation, and explicit zero-row and row-limit messaging, with a `✓ N row(s) in M ms` summary.
+- **Clearer feedback.** Generated SQL, off-topic refusals, cancellations, read-only blocks, and errors each have distinct, consistent presentation (`✓` / `◇` / `✗`), and write-operation hints surface before execution when read-only mode is active.
+- `/status`, `/model`, and `/help` now report live provider/model/connection information.
+
+### Fixed
+
+- Natural-language queries no longer ask the user to provide schema when a connection is active. When the client sends an empty schema context, the backend now builds one from live schema introspection (falling back to the schema RAG index), so the LLM prompt always includes the relevant tables and columns.
+- Resolved keyboard-shortcut conflicts with built-in VS Code commands: Show Schema moved from `Ctrl+Shift+S` (Save As) to `Ctrl+Alt+S`, and Open Query Tree moved from `Ctrl+Shift+T` (Reopen Closed Editor) to `Ctrl+Alt+T` (`Cmd` on macOS).
+- Robustness and schema-impact endpoints now serialize their responses correctly, fixing `ResponseValidationError` failures on those routes.
+
 ## [1.2.9] — 2026-08-29
 
 SQLite database resolution consistency, schema sidebar loading, and a PII over-masking fix.
