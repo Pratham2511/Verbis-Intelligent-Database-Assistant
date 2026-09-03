@@ -22,7 +22,7 @@ The default LLM provider is **Google Gemini** (`gemini-3.6-flash`, free tier ava
 - **Query tree (DAG).** Visualize and branch your query history with ReactFlow.
 - **Business glossary.** Define terms once ("MRR", "active user") and reuse them across queries.
 - **Privacy Shield + PII masking.** Schema names are anonymized before reaching a cloud LLM; result PII is masked and audit-logged.
-- **Multi-database.** PostgreSQL, MySQL, SQLite, and MongoDB; switch connections from the sidebar or a quick-pick.
+- **Multi-database.** PostgreSQL, MySQL, and SQLite are fully supported for live connection, introspection, and execution. (MongoDB appears as a connection option but is not yet wired for live execution.) Switch connections from the sidebar or a quick-pick.
 
 ---
 
@@ -100,7 +100,8 @@ Conversation context is preserved per terminal via a stable `sessionId` sent to 
 ## Database workflow
 
 1. **Connect.** `Verbis: Add Database Connection` opens a wizard (host, port, database, credentials). Passwords go to the OS keychain; the new connection becomes active automatically. Switch later with `Verbis: Select Database Connection` or from the **Connections** view in the Verbis sidebar.
-2. **Inspect schema.** `Verbis: Show Schema & ER Diagram` (`Ctrl+Shift+S`) opens the schema explorer and ER diagram. The backend introspects your live schema and indexes it locally (ChromaDB) so generated SQL only references real tables/columns.
+   - **Edit / Delete a connection.** Right-click a connection in the **Connections** sidebar (or run `Verbis: Edit Database Connection` / `Verbis: Delete Database Connection`) to update its details or remove it. Editing prefills the existing values and keeps the same connection; leaving the password blank keeps the stored one. Deleting removes the connection from Verbis and its stored password — it does **not** delete the underlying database or any database files.
+2. **Inspect schema.** `Verbis: Show Schema & ER Diagram` (`Ctrl+Alt+S` / `Cmd+Alt+S`) opens the schema explorer and ER diagram. The backend introspects your live schema and indexes it locally (ChromaDB) so generated SQL only references real tables/columns.
 3. **Ask.** In the assistant terminal, ask in plain English. Verbis retrieves the relevant schema, generates SQL, and returns it with a confidence score.
 4. **Run.** `/run` executes the statement against the active connection. Results render in a paginated grid; the query is appended to your history (see the **Recent Queries** view).
 5. **Create a schema (optional).** Describe a new system in natural language; Verbis generates schema JSON → DDL → ER diagram, refines it iteratively, and can execute the DDL on your database.
@@ -187,11 +188,13 @@ Off-topic requests get a polite refusal and produce no SQL and no LLM generation
 |---------|---------|------------|
 | `Verbis: Open Assistant` | Open the assistant terminal | `Ctrl+Shift+Q` / `Cmd+Shift+Q` |
 | `Verbis: Run Last Query` | Re-execute the most recent saved query | `Ctrl+Shift+R` / `Cmd+Shift+R` |
-| `Verbis: Show Schema & ER Diagram` | Open the schema explorer panel | `Ctrl+Shift+S` / `Cmd+Shift+S` |
-| `Verbis: Open Query Tree` | Open the ReactFlow DAG of query history | `Ctrl+Shift+T` / `Cmd+Shift+T` |
+| `Verbis: Show Schema & ER Diagram` | Open the schema explorer panel | `Ctrl+Alt+S` / `Cmd+Alt+S` |
+| `Verbis: Open Query Tree` | Open the ReactFlow DAG of query history | `Ctrl+Alt+T` / `Cmd+Alt+T` |
 | `Verbis: Set API Key` | Set or replace your Gemini / Groq key | — |
 | `Verbis: Remove API Key` | Remove the stored key from the OS keychain | — |
 | `Verbis: Add Database Connection` | New connection wizard | — |
+| `Verbis: Edit Database Connection` | Edit an existing connection (prefilled) | — |
+| `Verbis: Delete Database Connection` | Remove a connection (does not delete the database) | — |
 | `Verbis: Select Database Connection` | Quick-pick to switch the active connection | — |
 | `Verbis: Install / Reinstall Backend` | Manually trigger Python venv setup | — |
 | `Verbis: Restart Python Backend` | Restart the FastAPI subprocess | — |

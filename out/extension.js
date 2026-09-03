@@ -307,28 +307,10 @@ async function activate(context) {
     }), vscode.commands.registerCommand('verbis.addConnection', async () => {
         if (!workspaceService || !secretsService)
             return;
-        const name = await vscode.window.showInputBox({ prompt: 'Connection name', placeHolder: 'Production Postgres' });
-        if (!name)
+        const result = await promptConnectionForm();
+        if (!result)
             return;
-        const dialect = await vscode.window.showQuickPick(['postgresql', 'mysql', 'sqlite', 'mssql', 'mongodb'], { placeHolder: 'Database dialect' });
-        if (!dialect)
-            return;
-        const host = await vscode.window.showInputBox({ prompt: 'Host', placeHolder: 'localhost' });
-        if (host === undefined)
-            return;
-        const portStr = await vscode.window.showInputBox({ prompt: 'Port', placeHolder: '5432' });
-        if (portStr === undefined)
-            return;
-        const database = await vscode.window.showInputBox({ prompt: 'Database name' });
-        if (database === undefined)
-            return;
-        const user = await vscode.window.showInputBox({ prompt: 'User' });
-        if (user === undefined)
-            return;
-        const password = await vscode.window.showInputBox({
-            prompt: 'Password (will be stored in OS keychain, never on disk)',
-            password: true,
-        });
+        const { name, dialect, host, port, database, user, password } = result;
         const id = crypto.randomUUID();
         if (password) {
             await secretsService.storeDbPassword(id, password);
@@ -336,7 +318,7 @@ async function activate(context) {
         const cfg = await workspaceService.readConfig();
         cfg.connections.push({
             id, name, dialect: dialect, host: host || 'localhost',
-            port: parseInt(portStr || '5432', 10), database, user,
+            port, database, user,
         });
         await workspaceService.writeConfig(cfg);
         connectionsProvider?.refresh();
@@ -352,6 +334,94 @@ async function activate(context) {
         connectionsProvider.refresh();
         vscode.window.setStatusBarMessage(`Verbis: active connection → ${name}`, 3000);
         vscode.window.showInformationMessage(`Connection "${name}" saved.`);
+    }), 
+    // ── Edit an existing connection: prefill the shared form, update in ──
+    //    place (same id), persist, refresh, and reconnect if it was active.
+    vscode.commands.registerCommand('verbis.editConnection', async (arg) => {
+        if (!workspaceService || !secretsService)
+            return;
+        const conn = await resolveConnectionArg(arg);
+        if (!conn)
+            return;
+        const existingPassword = await secretsService.getDbPassword(conn.id);
+        const result = await promptConnectionForm(conn, existingPassword);
+        if (!result)
+            return;
+        const { name, dialect, host, port, database, user, password } = result;
+        // Update the existing connection in place — never create a duplicate.
+        const cfg = await workspaceService.readConfig();
+        const idx = cfg.connections.findIndex(c => c.id === conn.id);
+        if (idx === -1) {
+            vscode.window.showErrorMessage(`Verbis: connection "${conn.name}" no longer exists.`);
+            return;
+        }
+        cfg.connections[idx] = {
+            ...cfg.connections[idx],
+            name, dialect: dialect, host: host || 'localhost',
+            port, database, user,
+        };
+        await workspaceService.writeConfig(cfg);
+        // Password: store the new one, or remove the secret if it was cleared.
+        if (password) {
+            await secretsService.storeDbPassword(conn.id, password);
+        }
+        else if (existingPassword) {
+            await secretsService.deleteDbPassword(conn.id);
+        }
+        connectionsProvider.refresh();
+        // Reconnect so the backend picks up the new host/port/credentials.
+        if (backendManager) {
+            await backendManager.restart();
+        }
+        // Keep the edited connection selected/active and reload its schema.
+        VerbisPanel_1.VerbisPanel.currentPanel?.setActiveConnection(conn.id);
+        await VerbisPanel_1.VerbisPanel.currentPanel?.pushConnections();
+        schemaTreeProvider.setActiveConnection(conn.id);
+        schemaTreeProvider.refresh();
+        connectionsProvider.refresh();
+        vscode.window.setStatusBarMessage(`Verbis: active connection → ${name}`, 3000);
+        vscode.window.showInformationMessage(`Connection "${name}" updated.`);
+    }), 
+    // ── Delete a connection: confirm, remove config + secret, refresh. ──
+    //    Never touches the underlying database or any files.
+    vscode.commands.registerCommand('verbis.deleteConnection', async (arg) => {
+        if (!workspaceService || !secretsService)
+            return;
+        const conn = await resolveConnectionArg(arg);
+        if (!conn)
+            return;
+        const confirm = await vscode.window.showWarningMessage(`Delete connection "${conn.name}"?\n\n` +
+            `This removes only the saved Verbis connection configuration. ` +
+            `It does NOT delete the underlying database or any database files.`, { modal: true }, 'Delete');
+        if (confirm !== 'Delete')
+            return;
+        const cfg = await workspaceService.readConfig();
+        cfg.connections = cfg.connections.filter(c => c.id !== conn.id);
+        await workspaceService.writeConfig(cfg);
+        // Remove the stored password secret for this connection.
+        await secretsService.deleteDbPassword(conn.id);
+        connectionsProvider.refresh();
+        // Restart the backend so it drops the removed connection's pool.
+        if (backendManager) {
+            await backendManager.restart();
+        }
+        // Reset active connection/schema state to a remaining connection (if
+        // any). This guarantees the panel and schema view never reference the
+        // deleted id, regardless of which connection was previously active.
+        const remaining = cfg.connections[cfg.connections.length - 1];
+        const nextActiveId = remaining?.id;
+        if (nextActiveId) {
+            VerbisPanel_1.VerbisPanel.currentPanel?.setActiveConnection(nextActiveId);
+            schemaTreeProvider.setActiveConnection(nextActiveId);
+        }
+        else {
+            // No connections left — clear the schema view to a safe empty state.
+            await workspaceService.writeSchemaCache([]);
+        }
+        await VerbisPanel_1.VerbisPanel.currentPanel?.pushConnections();
+        schemaTreeProvider.refresh();
+        connectionsProvider.refresh();
+        vscode.window.showInformationMessage(`Connection "${conn.name}" deleted.`);
     }), vscode.commands.registerCommand('verbis.runRobustnessTest', async () => {
         if (!backendManager?.getClient() || !workspaceService)
             return;
@@ -464,6 +534,113 @@ async function promptForKey(secrets, provider) {
         await secrets.storeGroqKey(key);
     }
     vscode.window.showInformationMessage(`Verbis: ${provider} key saved securely ✓`);
+}
+// ── Connection form helper ───────────────────────────────────────────────────
+// Shared input flow for Add and Edit. When `existing` is provided every field
+// is pre-populated with the current values; otherwise sensible defaults are
+// used. Returns the collected values, or undefined if the user cancelled.
+// The password field is optional — leaving it blank keeps the current secret
+// (on edit) or stores none (on add).
+async function promptConnectionForm(existing, existingPassword) {
+    const name = await vscode.window.showInputBox({
+        prompt: 'Connection name',
+        placeHolder: 'Production Postgres',
+        value: existing?.name ?? '',
+        ignoreFocusOut: true,
+    });
+    if (!name)
+        return undefined;
+    // Put the current dialect first when editing so pressing Enter keeps it.
+    const allDialects = ['postgresql', 'mysql', 'sqlite', 'mssql', 'mongodb'];
+    const dialectChoices = existing
+        ? [existing.dialect, ...allDialects.filter(d => d !== existing.dialect)]
+        : allDialects;
+    const dialect = await vscode.window.showQuickPick(dialectChoices, {
+        placeHolder: existing ? `Database dialect (current: ${existing.dialect})` : 'Database dialect',
+        title: 'Database dialect',
+    });
+    if (!dialect)
+        return undefined;
+    const host = await vscode.window.showInputBox({
+        prompt: 'Host',
+        placeHolder: 'localhost',
+        value: existing?.host ?? '',
+        ignoreFocusOut: true,
+    });
+    if (host === undefined)
+        return undefined;
+    const portStr = await vscode.window.showInputBox({
+        prompt: 'Port',
+        placeHolder: '5432',
+        value: existing ? String(existing.port) : '',
+        ignoreFocusOut: true,
+    });
+    if (portStr === undefined)
+        return undefined;
+    const database = await vscode.window.showInputBox({
+        prompt: 'Database name',
+        value: existing?.database ?? '',
+        ignoreFocusOut: true,
+    });
+    if (database === undefined)
+        return undefined;
+    const user = await vscode.window.showInputBox({
+        prompt: 'User',
+        value: existing?.user ?? '',
+        ignoreFocusOut: true,
+    });
+    if (user === undefined)
+        return undefined;
+    const password = await vscode.window.showInputBox({
+        prompt: existing
+            ? 'Password (leave blank to keep current; stored in OS keychain, never on disk)'
+            : 'Password (will be stored in OS keychain, never on disk)',
+        password: true,
+        ignoreFocusOut: true,
+    });
+    return {
+        name,
+        dialect,
+        host,
+        port: parseInt(portStr || String(existing?.port ?? 5432), 10),
+        database,
+        user,
+        // On edit, a blank password means "keep the existing secret".
+        password: password || (existing ? existingPassword : undefined),
+    };
+}
+// ── Connection argument resolver ─────────────────────────────────────────────
+// Resolves a DBConfig from a sidebar context-menu TreeItem (id "conn:<id>"),
+// falling back to a QuickPick when invoked from the Command Palette.
+async function resolveConnectionArg(arg) {
+    if (!workspaceService) {
+        vscode.window.showWarningMessage('Verbis: workspace not ready.');
+        return undefined;
+    }
+    let connId;
+    if (arg && typeof arg === 'object' && 'id' in arg) {
+        const id = arg.id;
+        if (id?.startsWith('conn:'))
+            connId = id.slice('conn:'.length);
+    }
+    const cfg = await workspaceService.readConfig();
+    const connections = cfg.connections ?? [];
+    if (connections.length === 0) {
+        vscode.window.showInformationMessage('No connections saved. Run "Verbis: Add Database Connection" first.');
+        return undefined;
+    }
+    if (connId) {
+        return connections.find(c => c.id === connId);
+    }
+    const picked = await vscode.window.showQuickPick(connections.map(c => ({
+        label: c.name,
+        description: c.dialect,
+        detail: `${c.user}@${c.host}:${c.port}/${c.database}`,
+        id: c.id,
+    })), { title: 'Select Database Connection', placeHolder: 'Choose a connection' });
+    if (!picked)
+        return undefined;
+    return connections.find(c => c.id === picked.id);
 }
 // ── Database access UX helper ────────────────────────────────────────────────
 // Resolves the SQLite file path for the active connection (or a connection

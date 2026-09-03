@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.4.0] — 2026-09-03
+
+Connection management: edit and delete database connections directly from the sidebar.
+
+### Added
+
+- **Edit Database Connection.** Right-click a connection in the **Connections** sidebar (or run `Verbis: Edit Database Connection`) to update its name, dialect, host, port, database, or user. The form is prefilled with the existing values and updates the connection in place (same id, no duplicates). Leaving the password field blank keeps the currently stored password; entering a new one replaces it in the OS keychain. The connection stays active after editing.
+- **Delete Database Connection.** Right-click a connection (or run `Verbis: Delete Database Connection`) to remove it. A confirmation dialog makes clear that deleting a Verbis connection does **not** delete the underlying database or any database files. The stored password is removed from the OS keychain, and the active connection resets to the last remaining connection (or the schema cache is cleared if none remain).
+
+### Improved
+
+- The Add/Edit connection flow now shares a single form implementation, so both behave consistently (dialect quick-pick keeps the current dialect first when editing, so pressing Enter keeps it).
+- The backend restarts automatically after a connection is edited or deleted so the change takes effect immediately.
+
 ## [1.3.0] — 2026-09-03
 
 A redesigned, fully dynamic assistant terminal, a natural-language schema-context fix, and keyboard-shortcut conflict resolutions.

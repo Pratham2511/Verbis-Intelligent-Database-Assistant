@@ -2,7 +2,7 @@
   "name": "verbis-db-assistant",
   "displayName": "Verbis — Intelligent Database Assistant",
   "description": "Talk to any database in plain English. Verbis converts natural language into optimized SQL and NoSQL queries, explains results, tracks query history, and protects your data — all inside VS Code.",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "pratham2511",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -111,6 +111,16 @@
         "title": "Verbis: Add Database Connection"
       },
       {
+        "command": "verbis.editConnection",
+        "title": "Verbis: Edit Database Connection",
+        "icon": "$(edit)"
+      },
+      {
+        "command": "verbis.deleteConnection",
+        "title": "Verbis: Delete Database Connection",
+        "icon": "$(trash)"
+      },
+      {
         "command": "verbis.runRobustnessTest",
         "title": "Verbis: Run Schema Evolution Robustness Test"
       },
@@ -145,19 +155,39 @@
     "menus": {
       "view/item/context": [
         {
-          "command": "verbis.revealDatabase",
+          "command": "verbis.editConnection",
+          "when": "view == verbis.connections && viewItem == verbisConnection",
+          "group": "verbis@1"
+        },
+        {
+          "command": "verbis.deleteConnection",
+          "when": "view == verbis.connections && viewItem == verbisConnection",
+          "group": "verbis@2"
+        },
+        {
+          "command": "verbis.editConnection",
           "when": "view == verbis.connections && viewItem == verbisConnectionSqlite",
           "group": "verbis@1"
         },
         {
-          "command": "verbis.copyDatabasePath",
+          "command": "verbis.deleteConnection",
           "when": "view == verbis.connections && viewItem == verbisConnectionSqlite",
           "group": "verbis@2"
         },
         {
-          "command": "verbis.openDatabase",
+          "command": "verbis.revealDatabase",
           "when": "view == verbis.connections && viewItem == verbisConnectionSqlite",
           "group": "verbis@3"
+        },
+        {
+          "command": "verbis.copyDatabasePath",
+          "when": "view == verbis.connections && viewItem == verbisConnectionSqlite",
+          "group": "verbis@4"
+        },
+        {
+          "command": "verbis.openDatabase",
+          "when": "view == verbis.connections && viewItem == verbisConnectionSqlite",
+          "group": "verbis@5"
         }
       ]
     },
