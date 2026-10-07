@@ -1,0 +1,64 @@
+{
+  "host": "Installed VS Code 1.140.0; packaged Verbis 1.5.0",
+  "provider": "Real Gemini",
+  "model": "gemini-3.6-flash",
+  "dataset": "Explicit synthetic fixture; monthly INR, not the user dataset",
+  "checks": [
+    "Real Gemini salary question and follow-up execute with strict threshold and department bindings",
+    "Ambiguity response inspected; no generated query executed automatically",
+    "Real Gemini uses scoped reviewed salary > 9000 definition and returns Dev only"
+  ],
+  "runs": [
+    {
+      "question": "List employees whose monthly INR salary is above 8000. Show id, name, salary and department.",
+      "sql": "SELECT \"id\", \"name\", \"salary\", \"department\" FROM \"employees\" WHERE \"salary\" > :threshold ORDER BY \"salary\" ASC LIMIT 100",
+      "parameters": {
+        "threshold": 8000
+      },
+      "rows": [
+        [
+          3,
+          "Cara",
+          8001,
+          "Finance"
+        ],
+        [
+          4,
+          "Dev",
+          12000,
+          "IT"
+        ]
+      ]
+    },
+    {
+      "question": "Only IT from those employees, sorted by salary descending.",
+      "sql": "SELECT \"id\", \"name\", \"salary\", \"department\" FROM \"employees\" WHERE \"salary\" > :threshold AND \"department\" = :department ORDER BY \"salary\" DESC LIMIT 100",
+      "parameters": {
+        "threshold": 8000,
+        "department": "IT"
+      },
+      "rows": [
+        [
+          "4",
+          "Dev",
+          "12000",
+          "IT"
+        ]
+      ]
+    }
+  ],
+  "initialFailure": "First inference request timed out. Retry generated parameterized SQL and returned Cara/Dev. Real provider diagnostics HTTP 200; no credentials retained.",
+  "ambiguityText": "Datasets\nProject\nAnalysis\nForensics\nRehearsal\nReconcile\nSchema\nCreatedb\nTree\nGlossary\nRobustness\nConnections\nBackend: ready\nAnalysis workspace\nLoad last executed query and result\nQuestion or follow-up\nGenerate SQL\nCancel\nWhat specific income threshold should be used to define 'earns a lot'?\nReview SQL\n\nTarget: datasets · Schema 104d3a81f0ff8d5b\n\nNamed parameters (JSON; SQL uses :threshold, :department, etc.) \nRun reviewed SQL\nAnalysis name \nSave with current definitions\nSaved analyses\nHigh earners IT · datasetsDelete saved analysis",
+  "ambiguitySql": "SELECT \"id\", \"name\", \"salary\", \"department\" FROM \"employees\" WHERE \"salary\" > :threshold AND \"department\" = :department ORDER BY \"salary\" DESC LIMIT 100",
+  "glossaryText": "Datasets\nProject\nAnalysis\nForensics\nRehearsal\nReconcile\nSchema\nCreatedb\nTree\nGlossary\nRobustness\nConnections\nBackend: ready\nAnalysis workspace\nLoad last executed query and result\nQuestion or follow-up\nGenerate SQL\nCancel\nSchema validation passed. /run target: Workspace datasets (datasets).\nReview SQL\n\nTarget: datasets · Schema 104d3a81f0ff8d5b\n\nNamed parameters (JSON; SQL uses :threshold, :department, etc.) \nRun reviewed SQL\nAnalysis name \nSave with current definitions\nSaved analyses\nHigh earners IT · datasetsDelete saved analysis",
+  "glossarySql": "SELECT \"id\", \"name\", \"salary\" FROM \"employees\" WHERE \"salary\" > :threshold LIMIT 100",
+  "glossaryParameters": "{\"threshold\":9000}",
+  "glossaryRows": [
+    [
+      "4",
+      "Dev",
+      "12000"
+    ]
+  ],
+  "schemaText": "Datasets\nProject\nAnalysis\nForensics\nRehearsal\nReconcile\nSchema\nCreatedb\nTree\nGlossary\nRobustness\nConnections\nBackend: ready\nCreate database schema\n\nDescribe the tables and relationships. Generated DDL requires review and an explicit run against your active connection. Verbis read-only and timeout settings apply.\n\nRequirements\nSQL dialect \nSQLite\nPostgreSQL\nMySQL\nGenerate schema\nCancel\n\nRequest failed (422) on POST /api/schema/create: Provider returned an invalid schema. Refine the description."
+}

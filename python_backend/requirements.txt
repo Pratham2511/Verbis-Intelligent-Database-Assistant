@@ -1,27 +1,16 @@
-# Verbis Core Backend — Lightweight (~120MB)
-# No PyTorch. No CUDA. No spaCy. No sentence-transformers.
-
-fastapi>=0.110.0
-uvicorn[standard]>=0.27.0
-python-multipart>=0.0.9
-pydantic>=2.0.0
-pydantic-settings>=2.0.0
-python-dotenv>=1.0.0
-openai>=1.0.0
-httpx>=0.27.0
-sqlalchemy>=2.0.0
-psycopg2-binary>=2.9.0
-pymysql>=1.1.0
-pymongo>=4.6.0
-sqlglot>=23.0.0
-chromadb>=0.4.0
-pandas>=2.2.0
-numpy>=1.26.0
-cryptography>=42.0.0
-loguru>=0.7.2
-PyYAML>=6.0
-apted>=1.0.3
-cachetools>=5.0.0
-pytest>=8.0.0
-pytest-asyncio>=0.23.0
-respx>=0.21.0
+# Python 3.11–3.13 required; 3.13 verified locally, 3.11/3.12 pending CI.
+# Offline lexical schema index; no model download.
+fastapi==0.142.2
+uvicorn==0.54.0
+pydantic==2.13.5
+pydantic-settings==2.15.0
+python-dotenv==1.2.4
+openai==3.26.0
+httpx==0.28.1
+sqlalchemy==2.1.3
+psycopg2-binary==2.9.13
+pymysql==1.2.3
+sqlglot==30.21.0
+cryptography==50.0.2
+loguru==0.7.3
+cachetools==7.2.1

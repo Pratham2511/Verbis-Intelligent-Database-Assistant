@@ -1,283 +1,99 @@
-# Verbis — Intelligent Database Assistant (VS Code Extension)
+# Verbis — Database Workspace for VS Code
 
-**Publisher:** pratham2511 · **License:** MIT
-**Repository:** https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant
+Verbis generates schema-grounded SQL, runs reviewed queries, imports CSV datasets
+and connects analysis results to Python/SQLAlchemy source references. Version
+1.5.0 is a development build; see [the work log](docs/WORK-LOG.md) for verified
+behavior and outstanding release checks.
 
-Verbis is an AI database assistant that lives inside VS Code. You ask questions in plain English; Verbis generates optimized SQL (or NoSQL), explains the results, tracks query history, and protects your data — without leaving your workspace.
+## Start
 
-The conversational interface is a **terminal-based assistant** hosted in VS Code's integrated terminal (a Claude Code–style REPL). A Python FastAPI backend runs on `127.0.0.1` and does all the heavy lifting (schema introspection, SQL generation, execution, privacy).
+1. Open a trusted project folder in VS Code.
+2. Run **Verbis: Install / Reinstall Backend**. Python 3.11–3.13 is required.
+   Installation uses pinned dependencies in an isolated environment in VS Code
+   global storage. A failed reinstall preserves the previous environment.
+3. Run **Verbis: Open Database Workspace**. Add and validate a SQLite,
+   PostgreSQL or MySQL connection, or import a CSV in **Datasets**.
+4. Choose the provider in `verbis.llm.provider`: Gemini, Groq, OpenRouter or local Ollama.
+   Cloud keys can be securely saved or kept in memory for one assistant session.
+   Local mode requires an OpenAI-compatible Ollama endpoint at
+   `127.0.0.1:11434/v1`; it requires no cloud key.
+   OpenRouter uses `thinkingmachines/inkling:free` by default. Its model setting
+   accepts `:free` variants or `openrouter/free`; paid slugs are rejected before
+   sending a request, and SDK retries are disabled. The [Inkling free endpoint](https://openrouter.ai/thinkingmachines/inkling:free)
+   logs prompts/outputs for research and restricts use to agentic harnesses; use
+   synthetic or nonconfidential requirements when testing it.
+5. Ask in **Analysis**, review the SQL and its connection, then **Run reviewed
+   SQL**. Follow-ups preserve prior query context. Save a named analysis with
+   explicit `:named` parameters and export results or a readable report.
 
-The default LLM provider is **Google Gemini** (`gemini-3.6-flash`, free tier available — see [Get a free API key](https://aistudio.google.com/app/apikey)). **Groq** and **Ollama (local, offline)** are also supported. Your API key is stored in the OS keychain via VS Code SecretStorage and is **never written to any file on disk**.
+The terminal assistant remains available as **Verbis: Open Assistant**.
+`/run`, `/cancel`, `/reset`, `/history`, `/model` and Ctrl+C are supported.
+Terminal output shows at most 50 rows; the Analysis workspace paginates the
+loaded result. Query result limits are configurable up to 10,000 rows.
 
----
+## Available modules
 
-## Features
+| Module | First supported slice |
+|---|---|
+| Datasets | CSV preview, explicit column/type/date/currency/period mappings, NULL and duplicate reports, transactional create/append/replace, saved import provenance |
+| Project | Static Python/SQLAlchemy models, SQL/ORM read/write references, source links, unresolved dynamic-query evidence, incremental refresh by file hashes |
+| Analysis | Bound SQL, follow-ups, real results, pagination, aggregate bar charts, named parameters, schema/definition revision checks, CSV/report export |
+| Forensics | Single-table predicate truth/NULL checks by primary key, common join expansion, missing join partners, ungrouped aggregate contributions |
+| Rehearsal | SQLite ADD COLUMN / RENAME COLUMN on a disposable snapshot, saved-query checks, explicit expected-row assertions, source references and candidate saved-query patches |
+| Reconcile | SQL plus imported CSV, exact-key matching, duplicate/NULL ambiguity, explicit annual/monthly normalization, guarded SQLite correction proposals, isolated affected-report previews and review export |
+| Schema / Tree / Glossary | Live schema and ER diagram, persisted query tree, reviewed versioned business definitions used in generation |
 
-- **Natural-language → SQL / NoSQL.** Ask a question, get a precise, dialect-aware query with a confidence score.
-- **Terminal assistant.** A fast REPL in the integrated terminal with slash commands, cancellation, and per-session conversation context.
-- **Generate vs. execute stay distinct.** Verbis generates SQL; you explicitly run it with `/run` (row limits, read-only guard, history logging apply).
-- **SQL/database scope guard.** Off-topic requests (jokes, poems, weather) are rejected before any LLM call; obvious database questions are fast-pathed.
-- **Text2Schema.** Describe a system in plain English ("a school management app with students, teachers, courses…") and Verbis produces a normalized schema, DDL, and a live ER diagram, then iteratively refines it.
-- **Schema explorer + ER diagram.** Browse your live schema and an auto-generated Mermaid ER diagram.
-- **Query tree (DAG).** Visualize and branch your query history with ReactFlow.
-- **Business glossary.** Define terms once ("MRR", "active user") and reuse them across queries.
-- **Privacy Shield + PII masking.** Schema names are anonymized before reaching a cloud LLM; result PII is masked and audit-logged.
-- **Multi-database.** PostgreSQL, MySQL, and SQLite are fully supported for live connection, introspection, and execution. (MongoDB appears as a connection option but is not yet wired for live execution.) Switch connections from the sidebar or a quick-pick.
+Robustness's legacy static heuristic is labelled as a simulation. Use Rehearsal
+for measured supported migration checks. Excel import, other project adapters,
+group-specific aggregate forensics, richer transformations and SQL Test Lab are
+later slices, not advertised as finished functionality.
 
----
+## Execution and privacy
 
-## Installation
+Read-only mode is on by default. The backend checks the complete SQL AST and
+also enables supported database read-only controls. Mutating CTEs, SELECT INTO,
+locking reads and unsafe/unknown functions are rejected. Set operations remain
+available. Execution runs off the HTTP event loop with bounded fetches,
+server/driver timeouts and cancellation. Use a database account with permissions
+appropriate to your project.
 
-### From the Marketplace / `.vsix` (end users)
+The extension authenticates its loopback backend with a per-process token. API
+keys and remote database passwords use VS Code SecretStorage; session-only keys
+are discarded on close/reset/reload/provider switch. Saving a key confirms
+storage; provider usability is established by a successful request, not the key's
+prefix. If the OS keyring is unavailable, use the session-only flow.
 
-1. Install the extension.
-2. On first activation Verbis offers to **auto-install the Python backend** — it creates a venv in the extension's global storage (~120 MB, ~60 s, using `uv` when available, falling back to `pip`). You do **not** need to install Python dependencies manually.
-3. When prompted, set your LLM API key (see below).
+Cloud generation with Privacy Shield enabled anonymizes schema identifiers,
+question identifiers, glossary definitions and prior SQL before transmission.
+Coarse semantic roles from conventional column names help distinguish an
+organizational unit from an entity label; they do not establish salary units.
+Maps are discarded after each request. Clarifications display restored names.
+Dataset rows are not sent to the model.
+Result and file previews mask recognized PII while preserving numeric amounts and
+ordinary department labels. Detection has limits; it is not a universal PII
+classifier.
 
-### From source (development)
+Workspace state lives in `.qmind/`. Managed imported data is under
+`.qmind/databases/datasets.db`; existing external database files are preserved.
+Review workspace state before sharing or committing it.
 
-Prerequisites: **Node.js 20+**, **Python 3.11+**, **VS Code 1.85+**.
-
-```bash
-git clone https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant.git
-cd Verbis-Intelligent-Database-Assistant
-
-npm install                 # extension host
-cd webview && npm install && cd ..   # webview (React)
-
-# Python backend — only needed for local dev (end users get the auto-installer)
-cd python_backend && pip install -r requirements.txt && cd ..
-```
-
----
-
-## Quick start
-
-1. **Build** (from source):
-   ```bash
-   cd webview && npm run build && cd ..   # produces webview/dist/
-   npm run compile                        # produces out/
-   ```
-2. **Run:** open the folder in VS Code and press `F5` to launch an Extension Development Host. (End users: just install the `.vsix`.)
-3. **Set your API key** when prompted, or run **`Verbis: Set API Key`**.
-4. **Add a database connection** with **`Verbis: Add Database Connection`** (optional — needed only for live execution).
-5. **Open the assistant** with `Ctrl+Shift+Q` / `Cmd+Shift+Q` and ask a question.
-
----
-
-## How to open and use Verbis Assistant
-
-The assistant runs in the VS Code **integrated terminal**.
-
-- **Open:** `Verbis: Open Assistant` from the Command Palette, or press `Ctrl+Shift+Q` / `Cmd+Shift+Q`. Re-running it focuses the existing assistant terminal instead of spawning duplicates.
-- **Type** a natural-language database question and press **Enter**. Verbis displays the generated SQL before showing its confidence score and `/run` guidance.
-- **Run** the most recently generated SQL with `/run`. `/run` does not accept a natural-language argument; ask the question first, then run `/run`.
-- **Cancel** an in-flight request with `Ctrl+C` (or `/cancel`). When idle, `Ctrl+C` clears the current line.
-- **One request at a time:** while Verbis is working, further Enter presses are ignored with a notice.
-
-Generation and execution are separate: asking a question never runs SQL against your database. Execution only happens when you explicitly invoke `/run`, and it goes through the existing safe-execution path (row limit, timeout, read-only guard, history logging).
-
-### Terminal slash commands
-
-Slash commands are handled locally in the terminal — they never reach the backend or the LLM.
-
-| Command | Action |
-|---------|--------|
-| `/help`   | Show the help text |
-| `/run`    | Execute the last generated SQL |
-| `/status` | Show backend + session status |
-| `/model`  | Show the active LLM provider |
-| `/history`| Show this conversation's turns |
-| `/clear`  | Clear the screen |
-| `/reset`  | Start a new conversation (fresh session id) |
-| `/cancel` | Cancel the in-flight request |
-| `/exit`   | Close the assistant |
-
-Conversation context is preserved per terminal via a stable `sessionId` sent to the backend on every turn; `/reset` starts a fresh session.
-
----
-
-## Database workflow
-
-1. **Connect.** `Verbis: Add Database Connection` opens a wizard (host, port, database, credentials). Passwords go to the OS keychain; the new connection becomes active automatically. Switch later with `Verbis: Select Database Connection` or from the **Connections** view in the Verbis sidebar.
-   - **Edit / Delete a connection.** Right-click a connection in the **Connections** sidebar (or run `Verbis: Edit Database Connection` / `Verbis: Delete Database Connection`) to update its details or remove it. Editing prefills the existing values and keeps the same connection; leaving the password blank keeps the stored one. Deleting removes the connection from Verbis and its stored password — it does **not** delete the underlying database or any database files.
-2. **Inspect schema.** `Verbis: Show Schema & ER Diagram` (`Ctrl+Alt+S` / `Cmd+Alt+S`) opens the schema explorer and ER diagram. The backend introspects your live schema and indexes it locally (ChromaDB) so generated SQL only references real tables/columns.
-3. **Ask.** In the assistant terminal, ask in plain English. Verbis retrieves the relevant schema, generates SQL, and returns it with a confidence score.
-4. **Run.** `/run` executes the statement against the active connection. Results render in a paginated grid; the query is appended to your history (see the **Recent Queries** view).
-5. **Create a schema (optional).** Describe a new system in natural language; Verbis generates schema JSON → DDL → ER diagram, refines it iteratively, and can execute the DDL on your database.
-
----
-
-## LLM and API configuration
-
-Verbis supports three providers, selected with the `verbis.llm.provider` setting:
-
-| Provider | Setting value | Default model | Notes |
-|----------|---------------|---------------|-------|
-| Google Gemini (default) | `gemini` | `gemini-3.6-flash` | Free tier at [aistudio.google.com](https://aistudio.google.com/app/apikey) |
-| Groq | `groq` | `llama-3.3-70b-versatile` | Fast cloud alternative |
-| Ollama (local) | `local` | `sqlcoder:latest` | Fully offline; no API key needed |
-
-The model actually sent to the provider is the value of the corresponding model setting (`verbis.llm.geminiModel` or `verbis.llm.groqModel`), forwarded per-request to the backend. For `local`, the backend uses its own Ollama model.
-
-> **Gemini model note.** Google retired `gemini-2.5-flash` and earlier 2.x/1.x models for new users. Verbis defaults to `gemini-3.6-flash`. If you have an older model explicitly set in `verbis.llm.geminiModel`, Verbis shows a one-time warning and the backend returns a clear, actionable error telling you which setting to update — your setting is never changed for you.
-
-### Configuration settings
-
-| Setting | Values | Default |
-|---------|--------|---------|
-| `verbis.llm.provider` | `gemini` \| `groq` \| `local` | `gemini` |
-| `verbis.llm.geminiModel` | any Gemini model tag | `gemini-3.6-flash` |
-| `verbis.llm.groqModel` | any Groq model tag | `llama-3.3-70b-versatile` |
-| `verbis.privacy.enableShield` | `true` \| `false` | `true` |
-| `verbis.query.rowLimit` | `10`–`10000` | `500` |
-| `verbis.execution.timeoutSeconds` | int (seconds) | `60` |
-| `verbis.execution.readOnlyByDefault` | `true` \| `false` | `true` |
-| `verbis.backend.startPort` | int | `8765` |
-
-### Local (offline) mode
+## Development and verification
 
 ```bash
-# Install Ollama from https://ollama.com, then:
-ollama pull sqlcoder
-ollama serve
+npm ci
+npm ci --prefix webview
+python3 -m venv .venv
+.venv/bin/pip install -r python_backend/requirements-dev.txt
+npm run compile
+npm run lint
+npm test
+npm run typecheck:webview
+npm run build:webview
+.venv/bin/python -m pytest python_backend/tests -q
+npm run package
 ```
 
-Set `verbis.llm.provider` to `local`. No API key is required.
-
----
-
-## API key behavior
-
-Verbis needs an LLM API key to generate queries (except in `local` mode). Keys are stored in the **OS keychain** via VS Code SecretStorage — never in `.qmind/`, `config.json`, or any file on disk. The backend receives the key **per-request** in the `/api/generate` body, uses it for one LLM call, and discards it.
-
-You can set a key three ways:
-
-- **First-run prompt** — click **Set API Key** on the welcome message.
-- **Command Palette** — `Verbis: Set API Key` (choose `gemini` or `groq`, then paste).
-- **Webview settings** — the API Keys card in the Verbis panel.
-
-Remove a key with `Verbis: Remove API Key` (confirmation required).
-
-### Existing key vs. session-specific key
-
-The first time you ask a question in a session, Verbis asks how to authenticate:
-
-- **Existing configured key** — use the key stored in the OS keychain.
-- **Session-specific key** — paste a key held **only in memory** for this session. It is never saved and is discarded on `/reset`, `/exit`, terminal close, or window reload.
-- **Manage keys…** — jump to the key-setting command.
-
-Cancelling aborts the request — a stored key is never consumed silently. `/status` shows which credential source is active (without revealing the key).
-
----
-
-## SQL/database scope restriction
-
-Verbis only answers database questions. A two-layer guard runs before any SQL generation:
-
-1. **Deterministic pre-filter** — obvious off-topic requests (jokes, poems, weather, greetings, and general chit-chat) are rejected instantly with zero API cost; obvious database questions skip the classifier entirely.
-2. **Few-shot LLM classifier** — ambiguous input falls through to a lightweight classifier. It **fails open** (treats input as database-related) so a valid query is never blocked by a classifier hiccup.
-
-Off-topic requests get a polite refusal and produce no SQL and no LLM generation cost. Classifications are cached (200-entry LRU) and the cache is cleared automatically when you set/clear an API key or switch provider.
-
----
-
-## Commands
-
-| Command | Purpose | Keybinding |
-|---------|---------|------------|
-| `Verbis: Open Assistant` | Open the assistant terminal | `Ctrl+Shift+Q` / `Cmd+Shift+Q` |
-| `Verbis: Run Last Query` | Re-execute the most recent saved query | `Ctrl+Shift+R` / `Cmd+Shift+R` |
-| `Verbis: Show Schema & ER Diagram` | Open the schema explorer panel | `Ctrl+Alt+S` / `Cmd+Alt+S` |
-| `Verbis: Open Query Tree` | Open the ReactFlow DAG of query history | `Ctrl+Alt+T` / `Cmd+Alt+T` |
-| `Verbis: Set API Key` | Set or replace your Gemini / Groq key | — |
-| `Verbis: Remove API Key` | Remove the stored key from the OS keychain | — |
-| `Verbis: Add Database Connection` | New connection wizard | — |
-| `Verbis: Edit Database Connection` | Edit an existing connection (prefilled) | — |
-| `Verbis: Delete Database Connection` | Remove a connection (does not delete the database) | — |
-| `Verbis: Select Database Connection` | Quick-pick to switch the active connection | — |
-| `Verbis: Install / Reinstall Backend` | Manually trigger Python venv setup | — |
-| `Verbis: Restart Python Backend` | Restart the FastAPI subprocess | — |
-| `Verbis: Run Schema Evolution Robustness Test` | EvoSchema perturbation suite | — |
-| `Verbis: Open Business Glossary Editor` | Glossary CRUD UI | — |
-
-The Verbis activity-bar container also provides **Connections**, **Schema**, and **Recent Queries** sidebar views.
-
----
-
-## Development
-
-```bash
-npm run compile          # TypeScript → out/
-npm run watch            # TypeScript (watch)
-npm run build:webview    # React webview → webview/dist/
-npm run watch:webview    # webview (watch)
-npm run lint             # eslint
-npm test                 # vitest (unit)
-npm run package          # vsce package --no-yarn → .vsix
-```
-
-Python backend tests:
-
-```bash
-cd python_backend
-pytest -v
-```
-
-### Repository layout
-
-```
-├── package.json              # Extension manifest
-├── src/                      # Extension host (TypeScript)
-│   ├── extension.ts          # Activation + command registration
-│   ├── BackendManager.ts     # Python subprocess lifecycle
-│   ├── assistant/AssistantSession.ts   # UI-independent conversation controller
-│   ├── terminal/             # Pseudoterminal REPL + terminal lifecycle
-│   ├── panels/               # Webview panels (schema, query tree, main)
-│   ├── services/             # BackendClient, SecretsService, WorkspaceService, …
-│   └── views/                # Sidebar tree providers
-├── webview/                  # React app (Vite)
-└── python_backend/           # FastAPI backend (Python 3.11+)
-    ├── main.py
-    ├── config.py
-    ├── api/routes/           # /api/generate, /api/execute, /api/schema, …
-    ├── models/requests.py
-    └── services/             # llm_service, intent_service, sql_generator, …
-```
-
----
-
-## Troubleshooting
-
-- **"The configured Gemini model '…' is no longer available."** Google retired that model. Set `verbis.llm.geminiModel` to `gemini-3.6-flash` (the default) or another supported model, then retry.
-- **"No valid API key for the selected provider."** Run `Verbis: Set API Key`, or choose a session key when prompted.
-- **Backend won't start / 404s.** Run `Verbis: Restart Python Backend`. If it persists, run `Verbis: Install / Reinstall Backend` to rebuild the venv.
-- **Off-topic questions are refused.** That's by design — Verbis only handles database/SQL requests. See the scope-restriction section.
-- **Local mode does nothing.** Make sure `ollama serve` is running and you've pulled the model (`ollama pull sqlcoder`).
-
----
-
-## Security model
-
-- **Credentials never on disk.** API keys and DB passwords live only in VS Code SecretStorage (OS keychain).
-- **Per-request keys.** The backend receives the API key in the request body, uses it once, and discards it.
-- **Localhost only.** The backend binds to `127.0.0.1` and refuses non-loopback requests.
-- **Read-only by default.** `INSERT`/`UPDATE`/`DELETE`/`DROP` are rejected unless `verbis.execution.readOnlyByDefault` is `false`.
-- **Row limit + timeout.** 500 rows / 60 s by default (configurable).
-- **Privacy Shield + PII masking.** Schema anonymization before cloud LLM calls; result PII masked and audit-logged.
-
----
-
-## Contributing
-
-See [CONTRIBUTING.md](./CONTRIBUTING.md).
-
-## License
-
-MIT. See [LICENSE](./LICENSE) for details.
-
----
-
-## Changelog
-
-Per-version changes are recorded in [CHANGELOG.md](./CHANGELOG.md).
+Use Node 22+ for VSIX packaging (`@vscode/vsce` 4). CI runs the backend suite on
+Python 3.11/3.12/3.13 and builds/tests the extension with Node 24. Controller tests
+and controlled-provider fixtures are labelled; they do not replace installed
+VS Code, OS keyring, real-provider or real database-engine acceptance tests.

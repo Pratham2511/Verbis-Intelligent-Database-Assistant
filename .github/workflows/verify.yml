@@ -1,0 +1,62 @@
+name: Verify Verbis
+on: [push, pull_request]
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ['3.11', '3.12', '3.13']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+          cache: pip
+          cache-dependency-path: python_backend/requirements*.txt
+      - run: pip install -r python_backend/requirements-dev.txt
+      - run: python -m pytest python_backend/tests -q
+  extension:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - run: npm ci
+      - run: npm ci --prefix webview
+      - run: npm run compile && npm run lint && npm test && npm run typecheck:webview && npm run build:webview
+      - run: npm run package -- --out verbis.vsix
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verbis-vsix
+          path: verbis.vsix
+
+  engines:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: verbis_test
+          POSTGRES_PASSWORD: fixture_only
+          POSTGRES_DB: verbis_acceptance
+        ports: ['5432:5432']
+        options: --health-cmd "pg_isready -U verbis_test -d verbis_acceptance" --health-interval 5s --health-timeout 5s --health-retries 12
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: fixture_only
+          MYSQL_DATABASE: verbis_acceptance
+        ports: ['3306:3306']
+        options: --health-cmd "mysqladmin ping -h 127.0.0.1 -pfixture_only" --health-interval 5s --health-timeout 5s --health-retries 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - run: pip install -r python_backend/requirements-dev.txt
+      - run: python -m pytest python_backend/tests/test_live_engines.py -q
+        env:
+          VERBIS_TEST_POSTGRES_URL: postgresql+psycopg2://verbis_test:fixture_only@127.0.0.1:5432/verbis_acceptance
+          VERBIS_TEST_MYSQL_URL: mysql+pymysql://root:fixture_only@127.0.0.1:3306/verbis_acceptance

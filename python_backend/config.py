@@ -88,4 +88,4 @@ def parse_args() -> Settings:
 
 
 # Singleton
-settings = parse_args()
+settings = Settings()

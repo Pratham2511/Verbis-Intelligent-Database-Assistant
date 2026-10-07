@@ -1,0 +1,17 @@
+{
+  "host": "Installed VS Code 1.140.0 on private Xvfb; final 1.5.0 package",
+  "provider": "Real Gemini gemini-3.6-flash",
+  "checks": [
+    "Previously saved SQL opened before asking; provider error clears SQL/binding/results and disables Run",
+    "Delayed session-only credential choice resumes original request; provider rate-limit error returned instead of old webview timeout"
+  ],
+  "clarificationRetest": "Pending: real provider rate limited; this is an error-path check, not successful clarification",
+  "text": "Datasets\nProject\nAnalysis\nForensics\nRehearsal\nReconcile\nSchema\nCreatedb\nTree\nGlossary\nRobustness\nConnections\nBackend: ready\nAnalysis workspace\nLoad last executed query and result\nQuestion or follow-up\nGenerate SQL\nCancel\nReview SQL\n\nTarget: Not selected\n\nNamed parameters (JSON; SQL uses :threshold, :department, etc.) \nRun reviewed SQL\n\nRate limited by LLM provider\n\nAnalysis name \nSave with current definitions\nSaved analyses\nHigh earners IT · datasetsDelete saved analysis\nPayroll total preview · datasetsDelete saved analysis",
+  "state": {
+    "sql": "",
+    "disabled": true,
+    "alerts": [
+      "Rate limited by LLM provider"
+    ]
+  }
+}

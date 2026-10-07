@@ -17,6 +17,7 @@ export interface DBConfig {
   user: string;
   // Password is NEVER stored here — lives in VS Code SecretStorage under key `qm.db.password.${id}`
   ssl?: boolean;
+  sslCa?:string;
   poolSize?: number;                   // Default: 5
 }
 
@@ -157,6 +158,9 @@ export interface AnnotationReply {
 
 // ─── Glossary ─────────────────────────────────────────────────────────────
 export interface GlossaryTerm {
+  connectionId?: string;
+  units?: Record<string,string>;
+  revision?: number;
   term: string;
   sqlTemplate: string;
   aliases: string[];
@@ -210,6 +214,8 @@ export interface WebviewMessage {
 }
 
 export type WebviewMessageType =
+  | 'OPEN_ANALYSIS' | 'EDIT_CONNECTION' | 'PROJECT_CHANGED' | 'PICK_CSV' | 'EXPORT_FILE' | 'CANCEL_REQUEST'
+  | 'PANEL_READY' | 'OPEN_TAB' | 'LOAD_SCHEMA' | 'LOAD_TREE' | 'GET_GLOSSARY' | 'GLOSSARY_LOADED' | 'ROBUSTNESS_RESULT' | 'WORKSPACE_ACTION' | 'WORKSPACE_RESULT' | 'DELETE_CONNECTION' | 'OPEN_SOURCE'
   | 'GENERATE_SQL'
   | 'EXECUTE_SQL'
   | 'SQL_GENERATED'

@@ -44,7 +44,7 @@ class PerfTracker:
         if baseline is None:
             return None
 
-        if execution_time_ms > baseline * (1 + self._threshold_pct / 100):
+        if execution_time_ms >= 50 and execution_time_ms-baseline >= 20 and execution_time_ms > baseline * (1 + self._threshold_pct / 100):
             pct_slower = round((execution_time_ms / baseline - 1) * 100, 1)
             return {
                 'percentSlower': pct_slower,

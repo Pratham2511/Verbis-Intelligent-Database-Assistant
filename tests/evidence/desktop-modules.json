@@ -1,0 +1,12 @@
+{
+  "host": "Installed VS Code 1.140.0",
+  "provider": "controlled local fixture",
+  "checks": [
+    "Saved mapping retained on pasted refresh; explicit replace imports 5 rows with id primary key",
+    "Live Schema tab loads employees and renders ER SVG",
+    "Navigator finds known read/write/divide-by-12 evidence and unresolved dynamic SQL; source link clicked",
+    "Parameterized predicate diagnostic reports Bob equality false and Esha NULL unknown",
+    "Real isolated rename rehearsal shows unchanged payroll query fails",
+    "Saved named analysis reopens with parameter bindings; changed saved definitions block run; deliberate save/review then returns Dev"
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "host": "Installed packaged VS Code 1.140.0",
+  "states": [
+    "ready",
+    "crashed",
+    "starting",
+    "ready",
+    "crashed"
+  ],
+  "firstPid": 68996,
+  "autoRestartPid": 69140,
+  "checks": [
+    "First crash changes pid and returns to ready",
+    "Second crash within 30 seconds stays crashed until manual restart",
+    "Manual Restart Backend command returns to ready after repeated crash"
+  ]
+}

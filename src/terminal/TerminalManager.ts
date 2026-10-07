@@ -31,12 +31,12 @@ export class TerminalManager implements vscode.Disposable {
    * When `recallSql` is given (from Recent Queries), it is loaded into the
    * terminal as the pending executable SQL, ready to review and /run.
    */
-  open(recallSql?: string): void {
+  open(recallSql?: string, connectionId?: string,parameters?:Record<string,unknown>,schemaFingerprint?:string): void {
     if (this.terminal) {
       // Reveal the existing terminal rather than spawning a duplicate.
       this.terminal.show();
       if (recallSql) {
-        this.pty?.recallSql(recallSql);
+        this.pty?.recallSql(recallSql, connectionId,parameters,schemaFingerprint);
       }
       return;
     }
@@ -62,9 +62,11 @@ export class TerminalManager implements vscode.Disposable {
 
     // Apply any recalled SQL once the terminal is ready.
     if (recallSql) {
-      pty.recallSql(recallSql);
+      pty.recallSql(recallSql, connectionId,parameters,schemaFingerprint);
     }
   }
+
+  providerChanged(){this.pty?.providerChanged();}
 
   private disposeTerminal(): void {
     this.closeSubscription?.dispose();

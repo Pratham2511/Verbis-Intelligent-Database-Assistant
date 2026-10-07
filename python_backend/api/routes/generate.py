@@ -2,57 +2,13 @@ from fastapi import APIRouter, HTTPException, Request
 from models.requests import GenerateRequest
 from services.llm_service import (
     DEFAULT_GEMINI_MODEL,
-    RETIRED_GEMINI_MODELS,
     generate_sql,
     generate_nosql,
 )
-from services.intent_service import classify_intent, clear_intent_cache
+from services.intent_service import clear_intent_cache
 from services.dialect_service import resolve_dialect
 
 router = APIRouter()
-
-
-def _build_schema_context(state, db_config_id, nl_query: str) -> str:
-    """Build a schema context string for the LLM when the client didn't send one.
-
-    The extension currently posts ``schema_context: ''`` (it only ever fills it
-    with disambiguation answers), so without this fallback the LLM prompt's
-    ``Schema:`` section is empty and the assistant asks the user for the schema
-    even though the backend already has it. Build the context from the live
-    connection's introspected schema; fall back to the ChromaDB RAG index when
-    introspection is unavailable. Returns '' only when nothing is available.
-    """
-    if not db_config_id:
-        return ''
-    try:
-        pool = state.db_pools.get(db_config_id)
-    except Exception:
-        pool = None
-    if pool is None:
-        return ''
-
-    # Preferred: live introspection (same logic as GET /api/schema).
-    try:
-        from api.routes.schema import _introspect_schema
-        tables = _introspect_schema(pool, state.workspace_path, state)
-        if tables:
-            lines = []
-            for t in tables:
-                cols = ', '.join(f"{c['name']} {c['type']}" for c in t.get('columns', []))
-                lines.append(f"Table {t['tableName']}: {cols}")
-            return '\n'.join(lines)
-    except Exception:
-        pass
-
-    # Fallback: RAG-indexed schema chunks relevant to the question.
-    try:
-        chunks = state.rag.retrieve_relevant(nl_query)
-        docs = [c.get('doc') for c in chunks if c.get('doc')]
-        if docs:
-            return '\n'.join(docs)
-    except Exception:
-        pass
-    return ''
 
 
 def _retired_model_error(provider: str, model: str) -> HTTPException:
@@ -66,7 +22,7 @@ def _retired_model_error(provider: str, model: str) -> HTTPException:
             status_code=400,
             detail=(
                 f"The configured Gemini model '{model}' is no longer available "
-                "(Google retired it for new users). "
+                "for this account. "
                 f"Update the VS Code setting 'verbis.llm.geminiModel' to "
                 f"'{DEFAULT_GEMINI_MODEL}' (the current default) or another supported model, "
                 "then try again."
@@ -90,6 +46,9 @@ def _friendly_generation_error(exc: Exception, provider: str = "", model: str = 
     "500 Internal Server Error" — the terminal then shows a cryptic message.
     Instead we return a clean detail string the extension can display directly.
     """
+    from services.llm_service import ProviderConfigurationError
+    if isinstance(exc, ProviderConfigurationError):
+        return HTTPException(status_code=422, detail=str(exc))
     msg = str(exc).lower()
 
     # Retired / unknown model (provider 404, "no longer available", "not found").
@@ -99,7 +58,6 @@ def _friendly_generation_error(exc: Exception, provider: str = "", model: str = 
         or "is not found" in msg
         or "model not found" in msg
         or ("404" in msg and "model" in msg)
-        or (model and model in RETIRED_GEMINI_MODELS)
     ):
         return _retired_model_error(provider, model or "(unknown)")
 
@@ -116,61 +74,106 @@ def _friendly_generation_error(exc: Exception, provider: str = "", model: str = 
             status_code=429,
             detail="The LLM provider rate-limited the request. Wait a moment and try again.",
         )
-    return HTTPException(status_code=502, detail=f"The LLM provider returned an error: {exc}")
+    return HTTPException(status_code=502, detail='The LLM provider failed. Check provider/model availability and retry.')
 
 
 @router.post("/generate")
 async def generate(req: GenerateRequest, request: Request):
-    # ── Intent Guard: block off-topic queries before SQL generation ──
-    intent, offtopic_msg = await classify_intent(
-        user_message=req.nl_query,
-        provider=req.provider,
-        api_key=req.api_key,
-        model=req.model,
-    )
-    if intent == "OFFTOPIC":
-        return {
-            "query": None,
-            "confidence": 0.0,
-            "alternatives": [],
-            "offtopic": True,
-            "message": offtopic_msg,
-        }
-
-    # ── Normal SQL/NoSQL generation ──────────────────────────────────
-    # If the client didn't supply a schema context (the extension currently
-    # sends ''), build one from the registered connection so the LLM always
-    # sees the real schema instead of asking the user for it.
-    schema_context = req.schema_context
-    if not schema_context or not schema_context.strip():
-        schema_context = _build_schema_context(
-            request.app.state.qm, req.db_config_id, req.nl_query
-        )
+    import json
+    import re
+    import asyncio
+    from services.intent_service import _deterministic_intent
+    from services.validator_service import Validator
+    from services.glossary_service import GlossaryService
+    from api.routes.schema import schema_result
+    state = request.app.state.qm
+    if _deterministic_intent(req.nl_query) == 'OFFTOPIC':
+        return {'query': None, 'confidence': 0, 'alternatives': [], 'offtopic': True,
+                'message': 'Ask a question about your database.', 'providerVerified': False}
+    if req.query_type != 'sql':
+        raise HTTPException(422, detail='Live NoSQL generation/execution is not supported yet.')
+    if not req.db_config_id:
+        raise HTTPException(422, detail='Select a database connection before generating SQL.')
+    info = await schema_result(state, req.db_config_id)
+    tables = info['tables']
+    dialect = resolve_dialect(state.db_pools, req.db_config_id, req.dialect)
+    query = req.nl_query
+    session_key = (req.session_id or '', req.db_config_id)
+    previous = state.extra.setdefault('conversations', {}).get(session_key, [])
+    history = [{ 'role': t['role'], 'content': str(t.get('content', ''))[:10000] }
+               for t in (req.conversation or previous)[-10:] if t.get('role') in ('user', 'assistant')]
+    terms = GlossaryService(state.workspace_path / 'glossary.json').read().terms
+    # Follow-ups keep the reviewed definitions used by this conversation.
+    terms_used=state.extra.setdefault('conversation_terms',{}).get(session_key,[])
+    matched=[t for t in terms if t.dialect in (dialect,'postgresql' if dialect=='postgres' else dialect) and t.connectionId in (None,req.db_config_id) and (t.term in terms_used or any(a.lower() in query.lower() for a in [t.term,*t.aliases]))]
+    state.extra['conversation_terms'][session_key]=[t.term for t in matched]
+    from services.workspace_store import WorkspaceStore
+    catalogue=WorkspaceStore(state.workspace_path/'datasets.json').read({'tables':[]})
+    units=[{'table':t['table'],'columns':[{k:m.get(k) for k in ('name','currency','period')} for m in t['mapping']]} for t in catalogue['tables']] if req.db_config_id=='datasets' else []
+    glossary = json.dumps({'definitions':[t.model_dump() for t in matched],'datasetUnits':units})
+    original_history=history
+    privacy_id = None
+    validator = Validator(dialect)
+    outbound_tables = tables
+    if req.provider != 'local' and req.privacy_enabled:
+        outbound_tables, privacy_id = state.privacy_shield.anonymize(tables)
+        query = state.privacy_shield.anonymize_text(query, privacy_id)
+        glossary = state.privacy_shield.anonymize_text(glossary, privacy_id)
+        history = [{**t, 'content': state.privacy_shield.anonymize_text(t['content'], privacy_id)} for t in history]
+    context = json.dumps(outbound_tables)
+    async def watch_disconnect(task):
+        while not task.done():
+            if await request.is_disconnected(): task.cancel(); return
+            await asyncio.sleep(0.1)
+    task = asyncio.create_task(generate_sql(nl_query=query, schema_context=context,
+                dialect=dialect, provider=req.provider, api_key=req.api_key, model=req.model,
+                conversation=history, glossary=glossary))
+    watcher = asyncio.create_task(watch_disconnect(task))
     try:
-        if req.query_type == "nosql":
-            result = await generate_nosql(
-                nl_query=req.nl_query,
-                schema_context=schema_context,
-                provider=req.provider,
-                api_key=req.api_key,
-                model=req.model,
-            )
-        else:
-            result = await generate_sql(
-                nl_query=req.nl_query,
-                schema_context=schema_context,
-                dialect=resolve_dialect(
-                    request.app.state.qm.db_pools, req.db_config_id, req.dialect
-                ),
-                provider=req.provider,
-                api_key=req.api_key,
-                model=req.model,
-            )
-    except HTTPException:
-        raise
+        raw = await task
+        raw = re.sub(r'^```(?:sql|json)?\s*|\s*```$', '', raw.strip(), flags=re.I)
+        try:envelope = json.loads(raw) if raw.startswith('{') else {'query': raw}
+        except (ValueError,TypeError):raise HTTPException(422,detail='Model output was malformed JSON. Retry or refine the question.')
+        if not isinstance(envelope,dict):raise HTTPException(422,detail='Model output must be a query or clarification object')
+        if envelope.get('clarification'):
+            message=str(envelope['clarification'])
+            if privacy_id:message=state.privacy_shield.deanonymize_text(message,privacy_id)
+            return {'query': None, 'confidence': 0, 'alternatives': [], 'message': message, 'providerVerified': True}
+        if envelope.get('offtopic'):
+            message=str(envelope.get('message','Ask a database question.'))
+            if privacy_id:message=state.privacy_shield.deanonymize_text(message,privacy_id)
+            return {'query': None, 'confidence': 0, 'alternatives': [], 'offtopic': True,
+                    'message': message, 'providerVerified': True}
+        sql = str(envelope.get('query') or '').strip()
+        parameters=envelope.get('parameters') or {}
+        import sqlglot
+        from sqlglot import exp
+        if not isinstance(parameters,dict) or any(not isinstance(v,(str,int,float,bool,type(None))) for v in parameters.values()):raise HTTPException(422,detail='Generated parameters must be scalar values')
+        valid, _ = validator.validate_syntax(sql)
+        if not valid or not validator.validate_semantic(sql, outbound_tables):
+            raise HTTPException(422, detail='Model output failed SQL/schema validation. Refine the question and retry.')
+        if privacy_id:
+            sql = state.privacy_shield.deanonymize_sql(sql, privacy_id,validator.dialect)
+        if not validator.validate_semantic(sql, tables):
+            raise HTTPException(422, detail='Generated SQL refers to unknown or ambiguous database objects.')
+        names={p.name for p in sqlglot.parse_one(sql,read=validator.dialect).find_all(exp.Placeholder)}
+        if names!=set(parameters):raise HTTPException(422,detail='Generated SQL parameters are incomplete or inconsistent')
+        state.extra['conversations'][session_key] = [*original_history[-8:],
+                {'role': 'user', 'content': req.nl_query}, {'role': 'assistant', 'content': sql}]
+        node = state.history_store.append_query_tree_node(req.nl_query, sql, 0,
+                connection_id=req.db_config_id, session_id=req.session_id,
+                schema_fingerprint=info['fingerprint'])
+        return {'query': sql, 'confidence': 0, 'alternatives': [], 'validation': 'schema-validated',
+                'readOnly': validator.is_read_only(sql), 'connectionId': req.db_config_id,
+                'schemaFingerprint': info['fingerprint'], 'queryNodeId': node,'parameters':parameters,'providerVerified': True}
+    except HTTPException: raise
     except Exception as exc:
-        raise _friendly_generation_error(exc, req.provider, req.model or "")
-    return {"query": result, "confidence": 0.9, "alternatives": []}
+        from services.llm_service import ModelOutputError
+        if isinstance(exc, ModelOutputError): raise HTTPException(422, detail=str(exc))
+        raise _friendly_generation_error(exc, req.provider, req.model or '')
+    finally:
+        watcher.cancel()
+        if privacy_id: state.privacy_shield.discard(privacy_id)
 
 
 # ── Cache invalidation endpoint (Fix B) ──────────────────────────────

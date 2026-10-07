@@ -1,8 +1,8 @@
 {
   "name": "verbis-db-assistant",
-  "displayName": "Verbis — Intelligent Database Assistant",
-  "description": "Talk to any database in plain English. Verbis converts natural language into optimized SQL and NoSQL queries, explains results, tracks query history, and protects your data — all inside VS Code.",
-  "version": "1.4.0",
+  "displayName": "Verbis \u2014 Intelligent Database Assistant",
+  "description": "Schema-grounded SQL generation, CSV datasets, project references and reusable analysis inside VS Code.",
+  "version": "1.5.0",
   "publisher": "pratham2511",
   "icon": "media/icon.png",
   "license": "MIT",
@@ -28,7 +28,6 @@
     "gemini",
     "postgresql",
     "mysql",
-    "mongodb",
     "query",
     "nlp",
     "text-to-sql",
@@ -150,6 +149,10 @@
       {
         "command": "verbis.recallQuery",
         "title": "Verbis: Recall Query"
+      },
+      {
+        "command": "verbis.openWorkspace",
+        "title": "Verbis: Open Database Workspace"
       }
     ],
     "menus": {
@@ -221,15 +224,16 @@
           "enum": [
             "gemini",
             "groq",
+            "openrouter",
             "local"
           ],
           "default": "gemini",
-          "description": "LLM provider. Gemini recommended — free tier at aistudio.google.com."
+          "description": "LLM provider: Gemini, Groq, OpenRouter free models, or local Ollama."
         },
         "verbis.llm.geminiModel": {
           "type": "string",
           "default": "gemini-3.6-flash",
-          "description": "Gemini model to use. Default is gemini-3.6-flash. Note: gemini-2.5-flash and earlier 2.x/1.x models were retired by Google for new users."
+          "description": "Gemini model to use. Default is gemini-3.6-flash. Choose a model available to your Google account."
         },
         "verbis.llm.groqModel": {
           "type": "string",
@@ -251,7 +255,9 @@
         "verbis.execution.timeoutSeconds": {
           "type": "number",
           "default": 60,
-          "description": "Query execution timeout in seconds."
+          "description": "Query execution timeout in seconds.",
+          "minimum": 1,
+          "maximum": 600
         },
         "verbis.execution.readOnlyByDefault": {
           "type": "boolean",
@@ -262,6 +268,11 @@
           "type": "number",
           "default": 8765,
           "description": "First port to attempt for the Python backend."
+        },
+        "verbis.llm.openrouterModel": {
+          "type": "string",
+          "default": "thinkingmachines/inkling:free",
+          "description": "OpenRouter model slug. Verbis accepts :free variants or openrouter/free only, with no automatic paid-model fallback. Default Inkling free is a research endpoint; review its data policy before using confidential requirements."
         }
       }
     }
@@ -273,20 +284,23 @@
     "build:webview": "cd webview && npm run build",
     "watch:webview": "cd webview && npm run dev",
     "lint": "eslint src --ext ts",
-    "test": "vitest run",
-    "package": "vsce package --no-yarn"
+    "test": "vitest run --pool=forks --maxWorkers=2 --minWorkers=1",
+    "package": "vsce package --no-yarn",
+    "test:backend": "python3 -m pytest python_backend/tests -q",
+    "typecheck:webview": "cd webview && tsc --noEmit"
   },
   "devDependencies": {
     "@types/node": "^20.11.0",
-    "@types/vscode": "^1.85.0",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
+    "@types/vscode": "^1.85.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
     "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/test-cli": "^0.0.9",
+    "@vscode/test-electron": "^2.4.0",
+    "@vscode/vsce": "^4.0.0",
     "eslint": "^8.57.0",
     "typescript": "^5.4.0",
-    "vitest": "^1.6.0",
-    "@vscode/test-cli": "^0.0.9",
-    "@vscode/test-electron": "^2.4.0"
+    "vitest": "^1.6.0"
   }
 }

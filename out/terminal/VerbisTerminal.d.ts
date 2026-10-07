@@ -18,12 +18,18 @@ export declare class VerbisTerminal implements vscode.Pseudoterminal {
      * keep reopening fast; /history shows the full log.
      */
     private renderRestoredTranscript;
+    providerChanged(): void;
     close(): void;
     /**
      * Load a recalled SQL statement (from Recent Queries) as the pending
      * executable SQL and show it, so the user can review and /run it directly.
      */
-    recallSql(sql: string): void;
+    recallSql(sql: string, connectionId?: string, parameters?: Record<string, unknown>, schemaFingerprint?: string): void;
+    private cursor;
+    private escapeBuffer;
+    private inputHistory;
+    private historyCursor;
+    private redraw;
     handleInput(data: string): void;
     private evaluate;
     private renderReply;

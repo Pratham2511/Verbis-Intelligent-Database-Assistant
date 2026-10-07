@@ -155,12 +155,7 @@ class SchemaTreeProvider {
     /** Active connection id — the explicitly selected one if set, else the most
      * recently added connection (mirrors AssistantSession). */
     async activeConnectionId() {
-        if (this.selectedConnectionId)
-            return this.selectedConnectionId;
-        if (!this.workspace)
-            return undefined;
-        const cfg = await this.workspace.readConfig();
-        return cfg.connections[cfg.connections.length - 1]?.id;
+        return this.workspace ? this.workspace.getActiveConnectionId() : this.selectedConnectionId;
     }
     async getChildren(element) {
         const client = this.getClient();
@@ -263,7 +258,7 @@ class HistoryProvider {
             item.command = {
                 command: 'verbis.recallQuery',
                 title: 'Recall Query',
-                arguments: [h.sql],
+                arguments: [h.sql, h.connectionId, h.parameters, h.schemaFingerprint],
             };
             return item;
         });

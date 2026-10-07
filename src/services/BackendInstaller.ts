@@ -13,10 +13,13 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs';
+import * as crypto from 'crypto';
 import { spawn } from 'child_process';
 
 
 export class BackendInstaller {
+
+    private installing?:Thenable<void>;
 
     constructor(private readonly context: vscode.ExtensionContext) {}
 
@@ -27,6 +30,9 @@ export class BackendInstaller {
     }
 
     private get venvDir(): string {
+        try {const manifest=JSON.parse(fs.readFileSync(path.join(this.storageDir,'active-backend.json'),'utf8'));
+          if(typeof manifest.directory==='string' && /^venv-[a-f0-9-]+$/.test(manifest.directory)) return path.join(this.storageDir,manifest.directory);
+        } catch {}
         return path.join(this.storageDir, 'venv');
     }
 
@@ -53,6 +59,10 @@ export class BackendInstaller {
     }
 
     isReady(): boolean {
+        try{const manifest=JSON.parse(fs.readFileSync(path.join(this.storageDir,'active-backend.json'),'utf8'));
+          const requirements=fs.readFileSync(path.join(this.context.extensionPath,'python_backend','requirements.txt'));
+          if(manifest.requirementsHash!==crypto.createHash('sha256').update(requirements).digest('hex'))return false;
+        }catch{return false}
         return fs.existsSync(this.markerFile) && fs.existsSync(this.pythonExe);
     }
 
@@ -80,12 +90,12 @@ export class BackendInstaller {
 
         for (const cmd of candidates) {
             try {
-                await this.runCommand(cmd, ['--version']);
+                await this.runCommand(cmd, ['-c', 'import sys; assert (3,11) <= sys.version_info[:2] < (3,14), "Python 3.11–3.13 required"']);
                 return cmd;
             } catch { continue; }
         }
         throw new Error(
-            'Python 3.9+ is required but was not found. ' +
+            'Python 3.11–3.13 is required but was not found. ' +
             'Install it from python.org and restart VS Code.'
         );
     }
@@ -110,39 +120,45 @@ export class BackendInstaller {
             );
         }
 
+
         progress.report({ message: 'Checking Python installation...', increment: 5 });
         const sysPython = await this.getSystemPython();
 
-        progress.report({ message: 'Creating Python environment...', increment: 15 });
-        await this.runCommand(sysPython, ['-m', 'venv', this.venvDir]);
-
-        progress.report({ message: 'Installing uv (fast package manager)...', increment: 10 });
-        await this.runCommand(this.pipExe, ['install', '--quiet', 'uv'])
-            .catch(() => { /* uv install failed — will use pip fallback */ });
-
-        progress.report({ message: 'Installing Verbis dependencies (~120MB, ~60s)...', increment: 50 });
-        const useUv = fs.existsSync(this.uvExe);
-        if (useUv) {
-            // --python targets the venv interpreter explicitly; without it uv
-            // installs into whatever environment it detects (venv is not activated).
-            await this.runCommand(this.uvExe, ['pip', 'install', '--python', this.pythonExe, '-r', reqFile, '--quiet']);
-        } else {
-            await this.runCommand(this.pipExe, ['install', '-r', reqFile, '--quiet']);
+        // Build in a fresh, permanent path. A failed install never alters the working environment.
+        const directory='venv-'+crypto.randomUUID();
+        const staged=path.join(this.storageDir,directory);
+        const bin=path.join(staged,process.platform==='win32'?'Scripts':'bin');
+        const python=path.join(bin,process.platform==='win32'?'python.exe':'python3');
+        const pip=path.join(bin,process.platform==='win32'?'pip.exe':'pip3');
+        const uv=path.join(bin,process.platform==='win32'?'uv.exe':'uv');
+        try {
+          progress.report({ message: 'Creating Python environment...', increment: 15 });
+          await this.runCommand(sysPython,['-m','venv',staged]);
+          progress.report({ message: 'Installing package manager...', increment: 10 });
+          await this.runCommand(pip,['install','--quiet','uv']).catch(()=>{});
+          progress.report({ message: 'Installing pinned dependencies...', increment: 50 });
+          await this.runCommand(fs.existsSync(uv)?uv:pip,fs.existsSync(uv)?['pip','install','--python',python,'-r',reqFile,'--quiet']:['install','-r',reqFile,'--quiet']);
+          progress.report({message:'Checking backend imports...',increment:15});
+          await this.runCommand(python,['-c','import fastapi, uvicorn, sqlalchemy, sqlglot, cryptography, openai, pydantic_settings']);
+          fs.writeFileSync(path.join(staged,'verbis_ready'),new Date().toISOString());
+          const manifest=path.join(this.storageDir,'active-backend.json');
+          fs.writeFileSync(manifest+'.tmp',JSON.stringify({directory,requirementsHash:crypto.createHash('sha256').update(fs.readFileSync(reqFile)).digest('hex')}));
+          fs.renameSync(manifest+'.tmp',manifest);
+        } catch (err) {
+          fs.rmSync(staged,{recursive:true,force:true});
+          throw err;
         }
-
-        progress.report({ message: 'Finalizing...', increment: 15 });
-        this.markReady();
         progress.report({ message: '✅ Verbis backend ready!', increment: 5 });
     }
 
     async installWithProgress(): Promise<void> {
-        await vscode.window.withProgress(
-            {
-                location: vscode.ProgressLocation.Notification,
-                title: 'Setting up Verbis Backend (first time only)',
-                cancellable: false,
-            },
-            (progress) => this.install(progress)
+        if(this.installing)return this.installing;
+        const task=vscode.window.withProgress(
+            {location:vscode.ProgressLocation.Notification,title:'Setting up Verbis Backend',cancellable:false},
+            progress=>this.install(progress)
         );
+        this.installing=task;
+        try{await task}finally{if(this.installing===task)this.installing=undefined}
     }
+
 }

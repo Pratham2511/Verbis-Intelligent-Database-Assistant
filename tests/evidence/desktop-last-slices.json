@@ -1,0 +1,11 @@
+{
+  "host": "Final packaged VS Code 1.140.0",
+  "checks": [
+    "New connection retains acknowledged id; second Save edits same connection without duplicates",
+    "Actual CSV import confirms INR/annual provenance; Reconcile normalizes against monthly SQL, finds one conflict/missing key, proposes guarded 8001→9000 without applying",
+    "Actual Run Last reexecutes named threshold/department bindings on original datasets connection; last result returns Dev",
+    "Glossary command selects actual glossary tab; robustness command opens measured Change Rehearsal",
+    "Off-topic generation clears previous results instead of leaving old rows under new question"
+  ],
+  "provider": "No successful cloud inference claimed"
+}

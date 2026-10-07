@@ -2,61 +2,37 @@
 // GlossaryEditor.tsx — Business glossary CRUD interface
 // Implements Novel Contribution #10 (Semantic Layer with Business Glossary).
 // ============================================================================
-import { useState } from 'react';
+import { useState,useEffect } from 'react';
 import type { GlossaryTerm } from '../../../src/types';
-import { postMessage } from '../vscode';
-
-const SAMPLE: GlossaryTerm[] = [
-  {
-    term: 'active_user',
-    sqlTemplate: "COUNT(DISTINCT user_id) WHERE last_login > NOW() - INTERVAL 30 DAY",
-    aliases: ['active users', 'engaged users', 'monthly active', 'MAU'],
-    description: 'Users who logged in within the last 30 days',
-    dialect: 'postgresql',
-    owner: 'analytics_team',
-    lastValidated: '2026-08-10',
-  },
-  {
-    term: 'revenue',
-    sqlTemplate: 'SUM(order_total)',
-    aliases: ['sales', 'gross sales'],
-    description: 'Total revenue from completed orders',
-    dialect: 'postgresql',
-    owner: 'finance_team',
-    lastValidated: '2026-08-12',
-  },
-];
+import { request,onMessage,postMessage } from '../vscode';
 
 export default function GlossaryEditor() {
-  const [terms, setTerms] = useState<GlossaryTerm[]>(SAMPLE);
+  const [terms, setTerms] = useState<GlossaryTerm[]>([]);
   const [editing, setEditing] = useState<GlossaryTerm | null>(null);
 
+  const [connections,setConnections]=useState<any[]>([]),[active,setActive]=useState<any>(),[unitsText,setUnitsText]=useState('{}');
+  useEffect(()=>{const off=onMessage(m=>{if(m.type==='CONNECTIONS_UPDATED'){const p=m.payload as any;setConnections(p.connections);setActive(p.connections.find((c:any)=>c.id===p.activeConnectionId))}});postMessage('GET_CONNECTIONS',{});return off},[]);
+  const beginEdit=(term:GlossaryTerm)=>{setEditing({...term});setUnitsText(JSON.stringify(term.units??{}))};
+  const [error,setError]=useState('');
+  useEffect(()=>{request('GET_GLOSSARY',{}).then(x=>setTerms(x.terms),e=>setError(e.message))},[]);
   const startNew = () => {
-    setEditing({
+    beginEdit({
       term: '',
       sqlTemplate: '',
       aliases: [],
       description: '',
-      dialect: 'postgresql',
+      dialect: active?.dialect||'sqlite',
+      connectionId:active?.id,
+      units:{},
       owner: 'me',
       lastValidated: new Date().toISOString().slice(0, 10),
     });
   };
 
-  const save = () => {
-    if (!editing) return;
-    if (!editing.term.trim()) return;
-    setTerms(prev => {
-      const idx = prev.findIndex(t => t.term === editing.term);
-      if (idx >= 0) {
-        const copy = [...prev];
-        copy[idx] = editing;
-        return copy;
-      }
-      return [...prev, editing];
-    });
-    postMessage('GLOSSARY_SAVED', editing);
-    setEditing(null);
+  const save = async () => {
+    if (!editing?.term.trim()) return;
+    try {const units=JSON.parse(unitsText);if(!units||Array.isArray(units)||Object.values(units).some(v=>typeof v!=='string'))throw new Error('Units must be a JSON object of column names to reviewed unit strings');await request('GLOSSARY_SAVED',{...editing,units});const store=await request('GET_GLOSSARY',{});setTerms(store.terms);setEditing(null);setError('');}
+    catch(e){setError((e as Error).message)}
   };
 
   return (
@@ -72,19 +48,18 @@ export default function GlossaryEditor() {
       </div>
 
       <p className="text-xs opacity-70 mb-4">
-        Glossary terms enable deterministic SQL generation when NL input matches
-        a known metric (similarity &gt; 0.80). For similarity 0.50–0.80, the
-        template is used as a few-shot hint. Below 0.50, the full LLM
-        text-to-SQL pipeline runs.
+        Save reviewed business definitions as read-only SQL expressions or complete SELECT queries.
+        Matching definitions are included in generation and retained for follow-ups.
       </p>
 
+      {error&&<p role="alert">{error}</p>}
       {/* Term list */}
       <div className="space-y-2">
         {terms.map(t => (
           <div
-            key={t.term}
+            key={`${t.connectionId??'*'}:${t.term}`}
             className="border border-qm-border rounded p-2 cursor-pointer hover:bg-qm-hover"
-            onClick={() => setEditing({ ...t })}
+            onClick={() => beginEdit(t)}
           >
             <div className="flex justify-between">
               <span className="font-mono text-qm-accent">{t.term}</span>
@@ -126,6 +101,8 @@ export default function GlossaryEditor() {
                   placeholder="active_user"
                 />
               </Field>
+              <Field label="Connection"><select value={editing.connectionId||''} onChange={e=>setEditing({...editing,connectionId:e.target.value||undefined,dialect:connections.find(c=>c.id===e.target.value)?.dialect||editing.dialect})}><option value="">All connections (review applicability)</option>{connections.map(c=><option key={c.id} value={c.id}>{c.name}</option>)}</select></Field>
+              <Field label="Reviewed units (JSON; e.g. salary: INR/monthly)"><textarea value={unitsText} onChange={e=>setUnitsText(e.target.value)}/></Field>
               <Field label="SQL Template">
                 <textarea
                   value={editing.sqlTemplate}
@@ -158,7 +135,7 @@ export default function GlossaryEditor() {
                     onChange={e => setEditing({ ...editing, dialect: e.target.value })}
                     className="bg-transparent border border-qm-border rounded px-2 py-1"
                   >
-                    {['postgresql', 'mysql', 'sqlite', 'mssql'].map(d => (
+                    {['postgresql', 'mysql', 'sqlite'].map(d => (
                       <option key={d} value={d}>{d}</option>
                     ))}
                   </select>

@@ -51,43 +51,30 @@ const path = __importStar(require("path"));
 const BackendManager_1 = require("./BackendManager");
 const BackendInstaller_1 = require("./services/BackendInstaller");
 const VerbisPanel_1 = require("./panels/VerbisPanel");
-const SchemaPanel_1 = require("./panels/SchemaPanel");
-const QueryTreePanel_1 = require("./panels/QueryTreePanel");
 const WorkspaceService_1 = require("./services/WorkspaceService");
 const SecretsService_1 = require("./services/SecretsService");
 const SidebarProviders_1 = require("./views/SidebarProviders");
+const AssistantSession_1 = require("./assistant/AssistantSession");
 const TerminalManager_1 = require("./terminal/TerminalManager");
 let backendManager;
 let workspaceService;
 let secretsService;
 let terminalManager;
 async function activate(context) {
-    console.info('[Verbis] Activating extension v1.1.0…');
+    console.info(`[Verbis] Activating ${context.extension.packageJSON.version}…`);
     // ── Auto-install backend on first run (Fix D — Task 2.3) ────────────
     const installer = new BackendInstaller_1.BackendInstaller(context);
-    if (!installer.isReady()) {
-        const choice = await vscode.window.showInformationMessage('Verbis needs to install its Python backend (~120MB, one-time setup, ~60 seconds).', 'Install Now', 'Later');
-        if (choice === 'Install Now') {
-            try {
-                await installer.installWithProgress();
-                vscode.window.showInformationMessage('✅ Verbis is ready!');
-            }
-            catch (err) {
-                vscode.window.showErrorMessage(`Verbis backend setup failed: ${err.message}. ` +
-                    `Run "Verbis: Install / Reinstall Backend" from the Command Palette to retry.`);
-                return;
-            }
-        }
-        else {
-            vscode.window.showWarningMessage('Verbis needs the backend to work. Run "Verbis: Install / Reinstall Backend" when ready.');
-            return;
-        }
-    }
     // ── Register reinstall command (Task 2.3) ──────────────────────────
     context.subscriptions.push(vscode.commands.registerCommand('verbis.installBackend', async () => {
         try {
             await installer.installWithProgress();
-            vscode.window.showInformationMessage('✅ Verbis backend reinstalled.');
+            if (backendManager) {
+                backendManager.setPythonExe(installer.pythonExe);
+                const status = await backendManager.restart();
+                if (status.state !== 'ready')
+                    throw new Error(status.lastError ?? 'Backend failed readiness check');
+            }
+            vscode.window.showInformationMessage('Verbis backend installed and restarted.');
         }
         catch (err) {
             vscode.window.showErrorMessage(`Reinstall failed: ${err.message}`);
@@ -95,17 +82,6 @@ async function activate(context) {
     }));
     // ─── 0. Initialize SecretsService (VS Code SecretStorage) ─────────────
     secretsService = new SecretsService_1.SecretsService(context);
-    // ── First-run prompt ──────────────────────────────────────────────────
-    const existingKey = await secretsService.getGeminiKey();
-    if (!existingKey) {
-        const action = await vscode.window.showInformationMessage('Welcome to Verbis! A free Gemini API key is required to generate queries.', 'Set API Key', 'Get Free Key', 'Later');
-        if (action === 'Set API Key') {
-            await promptForKey(secretsService, 'gemini');
-        }
-        else if (action === 'Get Free Key') {
-            vscode.env.openExternal(vscode.Uri.parse('https://aistudio.google.com/app/apikey'));
-        }
-    }
     // ─── 1. Determine workspace root ────────────────────────────────────
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -121,11 +97,13 @@ async function activate(context) {
     const backendScriptPath = path.join(backendDir, 'main.py');
     // Task 2.3: pass installer.pythonExe to BackendManager (4th param)
     backendManager = new BackendManager_1.BackendManager(backendScriptPath, backendDir, workspaceRoot, installer.pythonExe, startPort, async () => {
-        const envVars = {};
+        const envVars = { QM_PRIVMAP_SALT: crypto.randomUUID() };
         try {
             if (workspaceService && secretsService) {
                 const cfg = await workspaceService.readConfig();
                 for (const conn of cfg.connections) {
+                    if (conn.dialect === 'sqlite')
+                        continue;
                     const pw = await secretsService.getDbPassword(conn.id);
                     if (pw) {
                         envVars[`QM_DB_PASSWORD_${conn.id}`] = pw;
@@ -139,9 +117,10 @@ async function activate(context) {
         return envVars;
     });
     // Fire-and-forget — don't block activation on backend ready
-    backendManager.start().then(status => {
-        vscode.window.setStatusBarMessage(`Verbis backend: ${status.state}${status.port ? ` (port ${status.port})` : ''}`, 3000);
-    });
+    if (installer.isReady())
+        backendManager.start().then(status => {
+            vscode.window.setStatusBarMessage(`Verbis backend: ${status.state}${status.port ? ` (port ${status.port})` : ''}`, 3000);
+        });
     // ─── 2b. Register sidebar view providers ─────────────────────────────
     // package.json declares verbis.connections / verbis.schema / verbis.history
     // under the Verbis activity bar container. Without these registrations the
@@ -161,6 +140,8 @@ async function activate(context) {
     context.subscriptions.push(WorkspaceService_1.WorkspaceService.onDidChangeData(() => {
         historyProvider.refresh();
         connectionsProvider.refresh();
+        schemaTreeProvider.refresh();
+        void VerbisPanel_1.VerbisPanel.currentPanel?.pushConnections();
     }));
     // Refresh schema tree when backend becomes ready
     backendManager.on('status', (status) => {
@@ -176,10 +157,11 @@ async function activate(context) {
     // ─── 3. Register commands ───────────────────────────────────────────
     context.subscriptions.push(vscode.commands.registerCommand('verbis.openAssistant', () => {
         terminalManager?.open();
-    }), vscode.commands.registerCommand('verbis.setApiKey', async () => {
-        const provider = await vscode.window.showQuickPick([
+    }), vscode.commands.registerCommand('verbis.setApiKey', async (requestedProvider) => {
+        const provider = requestedProvider ? { value: requestedProvider } : await vscode.window.showQuickPick([
             { label: 'Google Gemini', description: 'Recommended — free tier', value: 'gemini' },
-            { label: 'Groq', description: 'Alternative — free tier', value: 'groq' }
+            { label: 'Groq', description: 'Alternative — free tier', value: 'groq' },
+            { label: 'OpenRouter', description: 'Free models only', value: 'openrouter' }
         ], { title: 'Verbis: Which provider?' });
         if (provider && secretsService) {
             await promptForKey(secretsService, provider.value);
@@ -199,6 +181,7 @@ async function activate(context) {
         if (confirmed === 'Remove' && secretsService) {
             await secretsService.deleteGeminiKey();
             await secretsService.deleteGroqKey();
+            await secretsService.deleteOpenRouterKey();
             // Fix B: clear intent cache after deleting the key
             const client = backendManager?.getClient();
             if (client) {
@@ -241,6 +224,7 @@ async function activate(context) {
             selectedId = picked.id;
             selectedName = picked.label;
         }
+        await workspaceService.setActiveConnection(selectedId);
         VerbisPanel_1.VerbisPanel.currentPanel?.setActiveConnection(selectedId);
         // Make the Schema view reload for the newly selected connection.
         schemaTreeProvider.setActiveConnection(selectedId);
@@ -270,14 +254,14 @@ async function activate(context) {
     // Clicking a Recent Query copies its SQL to the clipboard and opens the
     // assistant, so the user can paste + review + re-run it. Clipboard is the
     // reliable, UI-agnostic handoff (works for both terminal and webview).
-    vscode.commands.registerCommand('verbis.recallQuery', async (sql) => {
+    vscode.commands.registerCommand('verbis.recallQuery', async (sql, connectionId, parameters, schemaFingerprint) => {
         if (!sql)
             return;
         // Open/focus the assistant and load the recalled SQL as the pending
         // executable statement, ready to review and /run. Also copy to the
         // clipboard as a convenience fallback.
         await vscode.env.clipboard.writeText(sql);
-        terminalManager?.open(sql);
+        terminalManager?.open(sql, connectionId, parameters, schemaFingerprint);
         vscode.window.setStatusBarMessage('Verbis: query loaded — type /run to execute', 3000);
     }), vscode.commands.registerCommand('verbis.runLastQuery', async () => {
         if (!workspaceService || !backendManager?.getClient())
@@ -290,8 +274,16 @@ async function activate(context) {
         const last = history[history.length - 1];
         const client = backendManager.getClient();
         try {
-            const result = await client.execute({ sql: last.sql, dbConfigId: 'default' });
-            vscode.window.showInformationMessage(`Query executed in ${result.executionTimeMs}ms — ${result.rowCount} rows.`);
+            if (!last.connectionId || !(await workspaceService.readConfig()).connections.some(c => c.id === last.connectionId)) {
+                throw new Error('The saved query’s connection is unavailable. Select a connection and regenerate.');
+            }
+            const session = new AssistantSession_1.AssistantSession(() => client, secretsService, workspaceService);
+            session.bindSql(last.sql, last.connectionId, last.schemaFingerprint, last.parameters);
+            const outcome = await session.execute(last.sql);
+            if (outcome.kind !== 'result')
+                throw new Error(outcome.message || 'Execution failed');
+            VerbisPanel_1.VerbisPanel.createOrShow(context, client, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('analysis');
+            vscode.window.showInformationMessage(`Query executed: ${outcome.result?.rowCount} rows.`);
         }
         catch (err) {
             vscode.window.showErrorMessage(`Re-execution failed: ${err.message}`);
@@ -299,41 +291,15 @@ async function activate(context) {
     }), vscode.commands.registerCommand('verbis.showSchema', () => {
         if (!backendManager)
             return;
-        SchemaPanel_1.SchemaPanel.createOrShow(context, backendManager.getClient());
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('schema');
     }), vscode.commands.registerCommand('verbis.openTree', () => {
         if (!workspaceService)
             return;
-        QueryTreePanel_1.QueryTreePanel.createOrShow(context, workspaceService);
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('tree');
     }), vscode.commands.registerCommand('verbis.addConnection', async () => {
         if (!workspaceService || !secretsService)
             return;
-        const result = await promptConnectionForm();
-        if (!result)
-            return;
-        const { name, dialect, host, port, database, user, password } = result;
-        const id = crypto.randomUUID();
-        if (password) {
-            await secretsService.storeDbPassword(id, password);
-        }
-        const cfg = await workspaceService.readConfig();
-        cfg.connections.push({
-            id, name, dialect: dialect, host: host || 'localhost',
-            port, database, user,
-        });
-        await workspaceService.writeConfig(cfg);
-        connectionsProvider?.refresh();
-        if (backendManager) {
-            await backendManager.restart();
-            vscode.window.showInformationMessage('Connection added. Backend restarted to apply changes.');
-        }
-        // Fix D + Fix G: auto-set the new connection as active.
-        // `id` is the existing variable declared above as `const id = crypto.randomUUID()`.
-        // Do NOT invent a new variable name — use `id` directly.
-        VerbisPanel_1.VerbisPanel.currentPanel?.setActiveConnection(id);
-        await VerbisPanel_1.VerbisPanel.currentPanel?.pushConnections();
-        connectionsProvider.refresh();
-        vscode.window.setStatusBarMessage(`Verbis: active connection → ${name}`, 3000);
-        vscode.window.showInformationMessage(`Connection "${name}" saved.`);
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('connections');
     }), 
     // ── Edit an existing connection: prefill the shared form, update in ──
     //    place (same id), persist, refresh, and reconnect if it was active.
@@ -343,44 +309,7 @@ async function activate(context) {
         const conn = await resolveConnectionArg(arg);
         if (!conn)
             return;
-        const existingPassword = await secretsService.getDbPassword(conn.id);
-        const result = await promptConnectionForm(conn, existingPassword);
-        if (!result)
-            return;
-        const { name, dialect, host, port, database, user, password } = result;
-        // Update the existing connection in place — never create a duplicate.
-        const cfg = await workspaceService.readConfig();
-        const idx = cfg.connections.findIndex(c => c.id === conn.id);
-        if (idx === -1) {
-            vscode.window.showErrorMessage(`Verbis: connection "${conn.name}" no longer exists.`);
-            return;
-        }
-        cfg.connections[idx] = {
-            ...cfg.connections[idx],
-            name, dialect: dialect, host: host || 'localhost',
-            port, database, user,
-        };
-        await workspaceService.writeConfig(cfg);
-        // Password: store the new one, or remove the secret if it was cleared.
-        if (password) {
-            await secretsService.storeDbPassword(conn.id, password);
-        }
-        else if (existingPassword) {
-            await secretsService.deleteDbPassword(conn.id);
-        }
-        connectionsProvider.refresh();
-        // Reconnect so the backend picks up the new host/port/credentials.
-        if (backendManager) {
-            await backendManager.restart();
-        }
-        // Keep the edited connection selected/active and reload its schema.
-        VerbisPanel_1.VerbisPanel.currentPanel?.setActiveConnection(conn.id);
-        await VerbisPanel_1.VerbisPanel.currentPanel?.pushConnections();
-        schemaTreeProvider.setActiveConnection(conn.id);
-        schemaTreeProvider.refresh();
-        connectionsProvider.refresh();
-        vscode.window.setStatusBarMessage(`Verbis: active connection → ${name}`, 3000);
-        vscode.window.showInformationMessage(`Connection "${name}" updated.`);
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).editConnection(conn);
     }), 
     // ── Delete a connection: confirm, remove config + secret, refresh. ──
     //    Never touches the underlying database or any files.
@@ -395,89 +324,40 @@ async function activate(context) {
             `It does NOT delete the underlying database or any database files.`, { modal: true }, 'Delete');
         if (confirm !== 'Delete')
             return;
-        const cfg = await workspaceService.readConfig();
-        cfg.connections = cfg.connections.filter(c => c.id !== conn.id);
-        await workspaceService.writeConfig(cfg);
-        // Remove the stored password secret for this connection.
-        await secretsService.deleteDbPassword(conn.id);
-        connectionsProvider.refresh();
-        // Restart the backend so it drops the removed connection's pool.
-        if (backendManager) {
-            await backendManager.restart();
-        }
-        // Reset active connection/schema state to a remaining connection (if
-        // any). This guarantees the panel and schema view never reference the
-        // deleted id, regardless of which connection was previously active.
-        const remaining = cfg.connections[cfg.connections.length - 1];
-        const nextActiveId = remaining?.id;
+        if (conn.dialect !== 'sqlite')
+            await secretsService.deleteDbPassword(conn.id);
+        await workspaceService.removeConnection(conn.id);
+        await backendManager?.getClient()?.deleteConnection(conn.id);
+        const nextActiveId = await workspaceService.getActiveConnectionId();
         if (nextActiveId) {
             VerbisPanel_1.VerbisPanel.currentPanel?.setActiveConnection(nextActiveId);
             schemaTreeProvider.setActiveConnection(nextActiveId);
         }
-        else {
-            // No connections left — clear the schema view to a safe empty state.
+        else
             await workspaceService.writeSchemaCache([]);
-        }
         await VerbisPanel_1.VerbisPanel.currentPanel?.pushConnections();
         schemaTreeProvider.refresh();
         connectionsProvider.refresh();
         vscode.window.showInformationMessage(`Connection "${conn.name}" deleted.`);
-    }), vscode.commands.registerCommand('verbis.runRobustnessTest', async () => {
-        if (!backendManager?.getClient() || !workspaceService)
+    }), vscode.commands.registerCommand('verbis.runRobustnessTest', () => {
+        if (!workspaceService || !secretsService)
             return;
-        const history = await workspaceService.readHistory();
-        if (history.length === 0) {
-            vscode.window.showWarningMessage('No saved queries to test. Run some queries first.');
-            return;
-        }
-        const report = await backendManager.getClient().runRobustness({
-            dbConfigId: 'default',
-            querySet: history.map(h => ({ id: h.id, sql: h.sql, nlInput: h.nlInput })),
-        });
-        vscode.window.showInformationMessage(`Robustness score: ${report.overallScore}% (${report.survivedAll}/${report.totalQueries} survived all perturbations).`);
-        vscode.window.showTextDocument(vscode.Uri.parse(`verbis://robustness/${encodeURIComponent(JSON.stringify(report))}`));
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('rehearsal');
+    }), vscode.commands.registerCommand('verbis.openWorkspace', () => {
+        if (workspaceService && secretsService)
+            VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null);
     }), vscode.commands.registerCommand('verbis.restartBackend', async () => {
         if (!backendManager)
             return;
         vscode.window.showInformationMessage('Restarting Verbis backend…');
+        if (!installer.isReady())
+            await installer.installWithProgress();
         await backendManager.restart();
     }), vscode.commands.registerCommand('verbis.openGlossaryEditor', () => {
         if (!workspaceService || !backendManager)
             return;
-        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService, secretsService);
-        // Switch webview to glossary tab via postMessage
-        VerbisPanel_1.VerbisPanel.currentPanel?.postMessage({
-            type: 'GLOSSARY_SAVED',
-            payload: { openEditor: true },
-        });
-    }));
-    // ─── 4. Register URI handler for robustness report ─────────────────
-    context.subscriptions.push(vscode.workspace.registerTextDocumentContentProvider('verbis', {
-        provideTextDocumentContent(uri) {
-            const json = decodeURIComponent(uri.path.slice(1));
-            try {
-                const obj = JSON.parse(json);
-                return [
-                    '# Schema Evolution Robustness Report',
-                    '',
-                    `Overall Robustness Score: ${obj.overallScore}%  (${obj.survivedAll} of ${obj.totalQueries} queries survive all perturbations)`,
-                    '',
-                    `Most fragile perturbation type: ${obj.mostFragile}`,
-                    `Most resilient perturbation type: ${obj.mostResilient}`,
-                    '',
-                    '## Per-Perturbation Breakdown',
-                    '',
-                    ...obj.perPerturbation.map((p) => `- **${p.perturbationType}**: breakage ${p.breakageRate}%, hallucination ${p.hallucinationRate}%`),
-                    '',
-                    '## Recommendations',
-                    '',
-                    ...(obj.recommendations || []).map((r) => `- ${r}`),
-                ].join('\n');
-            }
-            catch {
-                return 'Invalid robustness report payload.';
-            }
-        },
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService, secretsService, () => backendManager?.getClient() ?? null);
+        VerbisPanel_1.VerbisPanel.currentPanel?.openTab('glossary');
     }));
     // ── Fix E (Task 1.4) — Configuration change listener for provider switches ──
     // CRITICAL: use a SYNC callback. onDidChangeConfiguration's signature is
@@ -487,11 +367,18 @@ async function activate(context) {
     // .then(noop, errHandler) pattern instead:
     context.subscriptions.push(vscode.workspace.onDidChangeConfiguration(e => {
         if (e.affectsConfiguration('verbis.llm.provider')) {
+            terminalManager?.providerChanged();
+            VerbisPanel_1.VerbisPanel.currentPanel?.providerChanged();
             backendManager?.getClient()?.clearIntentCache()
                 ?.then(() => { }, err => console.warn('[Verbis] Intent cache clear failed after provider change:', err));
         }
     }));
     console.info('[Verbis] Extension activated successfully.');
+    if (!installer.isReady()) {
+        void vscode.window.showInformationMessage('Verbis needs Python 3.11–3.13 and a backend environment. Download size depends on platform.', 'Install Now', 'Later')
+            .then(choice => { if (choice === 'Install Now')
+            return vscode.commands.executeCommand('verbis.installBackend'); });
+    }
 }
 async function deactivate() {
     console.info('[Verbis] Deactivating extension…');
@@ -514,6 +401,12 @@ async function promptForKey(secrets, provider) {
             prompt: 'Free key from console.groq.com → API Keys',
             placeholder: 'Paste your API key',
             validate: looksLikeApiKey
+        },
+        openrouter: {
+            title: 'Verbis — OpenRouter API Key',
+            prompt: 'Key from openrouter.ai/keys. Verbis accepts free model slugs only.',
+            placeholder: 'Paste your API key',
+            validate: looksLikeApiKey
         }
     }[provider];
     const key = await vscode.window.showInputBox({
@@ -528,12 +421,16 @@ async function promptForKey(secrets, provider) {
         return;
     }
     if (provider === 'gemini') {
-        await secrets.storeGeminiKey(key);
+        await secrets.storeGeminiKey(key.trim());
+    }
+    else if (provider === 'groq') {
+        await secrets.storeGroqKey(key.trim());
     }
     else {
-        await secrets.storeGroqKey(key);
+        await secrets.storeOpenRouterKey(key.trim());
     }
-    vscode.window.showInformationMessage(`Verbis: ${provider} key saved securely ✓`);
+    await vscode.workspace.getConfiguration('verbis').update('llm.provider', provider, vscode.ConfigurationTarget.Workspace);
+    vscode.window.showInformationMessage(`Verbis: ${provider} key saved securely. Provider usability is verified on your next request.`);
 }
 // ── Connection form helper ───────────────────────────────────────────────────
 // Shared input flow for Add and Edit. When `existing` is provided every field
@@ -551,7 +448,7 @@ async function promptConnectionForm(existing, existingPassword) {
     if (!name)
         return undefined;
     // Put the current dialect first when editing so pressing Enter keeps it.
-    const allDialects = ['postgresql', 'mysql', 'sqlite', 'mssql', 'mongodb'];
+    const allDialects = ['postgresql', 'mysql', 'sqlite'];
     const dialectChoices = existing
         ? [existing.dialect, ...allDialects.filter(d => d !== existing.dialect)]
         : allDialects;
@@ -561,7 +458,7 @@ async function promptConnectionForm(existing, existingPassword) {
     });
     if (!dialect)
         return undefined;
-    const host = await vscode.window.showInputBox({
+    const host = dialect === 'sqlite' ? '' : await vscode.window.showInputBox({
         prompt: 'Host',
         placeHolder: 'localhost',
         value: existing?.host ?? '',
@@ -569,7 +466,7 @@ async function promptConnectionForm(existing, existingPassword) {
     });
     if (host === undefined)
         return undefined;
-    const portStr = await vscode.window.showInputBox({
+    const portStr = dialect === 'sqlite' ? '0' : await vscode.window.showInputBox({
         prompt: 'Port',
         placeHolder: '5432',
         value: existing ? String(existing.port) : '',
@@ -584,14 +481,14 @@ async function promptConnectionForm(existing, existingPassword) {
     });
     if (database === undefined)
         return undefined;
-    const user = await vscode.window.showInputBox({
+    const user = dialect === 'sqlite' ? '' : await vscode.window.showInputBox({
         prompt: 'User',
         value: existing?.user ?? '',
         ignoreFocusOut: true,
     });
     if (user === undefined)
         return undefined;
-    const password = await vscode.window.showInputBox({
+    const password = dialect === 'sqlite' ? undefined : await vscode.window.showInputBox({
         prompt: existing
             ? 'Password (leave blank to keep current; stored in OS keychain, never on disk)'
             : 'Password (will be stored in OS keychain, never on disk)',
@@ -661,9 +558,8 @@ async function resolveSqliteArg(arg) {
     const cfg = await workspaceService.readConfig();
     const connections = cfg.connections ?? [];
     // Fall back to the active connection (last in list) when no id was given.
-    const conn = connId
-        ? connections.find(c => c.id === connId)
-        : connections[connections.length - 1];
+    const activeId = await workspaceService.getActiveConnectionId();
+    const conn = connections.find(c => c.id === (connId ?? activeId));
     if (!conn) {
         vscode.window.showWarningMessage('Verbis: no connection selected.');
         return undefined;

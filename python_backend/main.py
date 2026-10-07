@@ -16,6 +16,8 @@ Binds to 127.0.0.1 only (Part 9 — Localhost Only). Provides:
 from __future__ import annotations
 
 import asyncio
+import os
+import secrets
 import signal
 import sys
 from contextlib import asynccontextmanager
@@ -23,13 +25,14 @@ from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from loguru import logger
 
 # Make backend dir importable when run as a script
 sys.path.insert(0, str(Path(__file__).parent))
 
-from config import settings  # noqa: E402
+from config import settings, parse_args  # noqa: E402
 from api.dependencies import init_app_state, dispose_app_state, AppState  # noqa: E402
 from api.routes import (  # noqa: E402
     generate,
@@ -40,6 +43,8 @@ from api.routes import (  # noqa: E402
     glossary,
     health,
     schema_create,
+    connections,
+    workspace,
 )
 
 
@@ -57,7 +62,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title='Verbis Backend',
     description='LLM-Based Intelligent Database Assistant — FastAPI service',
-    version='3.0.0',
+    version='1.5.0',
     lifespan=lifespan,
 )
 
@@ -76,7 +81,10 @@ async def enforce_localhost(request, call_next):
     """Defense-in-depth: refuse non-loopback requests even if uvicorn is misconfigured."""
     client_host = request.client.host if request.client else ''
     if client_host not in ('127.0.0.1', '::1', 'localhost'):
-        return {'detail': 'Forbidden: backend is localhost-only'}, 403
+        return JSONResponse({'detail': 'Forbidden: backend is localhost-only'}, status_code=403)
+    token=os.environ.get('QM_BACKEND_TOKEN')
+    if token and not secrets.compare_digest(request.headers.get('Authorization',''), 'Bearer '+token):
+        return JSONResponse({'detail':'Backend authentication required'},status_code=401)
     return await call_next(request)
 
 
@@ -90,6 +98,9 @@ app.include_router(robustness.router, prefix='/api', tags=['robustness'])
 app.include_router(glossary.router, prefix='/api', tags=['glossary'])
 app.include_router(schema_create.router, prefix='/api', tags=['schema_create'])
 
+
+app.include_router(connections.router,prefix='/api',tags=['connections'])
+app.include_router(workspace.router,prefix='/api',tags=['workspace'])
 
 # ─── Graceful Shutdown Endpoint ─────────────────────────────────────────
 @app.delete('/api/shutdown')
@@ -108,6 +119,8 @@ def _raise_shutdown():
 
 def main():
     """Entry point for `python main.py --port N --workspace PATH`."""
+    parsed = parse_args()
+    settings.__dict__.update(parsed.__dict__)
     uvicorn.run(
         'main:app',
         host=settings.host,

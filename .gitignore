@@ -1,8 +1,5 @@
-# Verbis workspace — commit most of .qmind/ to version control
-# Only exclude sensitive encrypted files and logs
-.qmind/priv_map.enc
-.qmind/pii_audit.log
-.qmind/*.log
+# User workspace state can contain queries, connection metadata and imported data.
+.qmind/
 
 # Python
 python_backend/venv/
@@ -10,8 +7,29 @@ python_backend/__pycache__/
 python_backend/**/__pycache__/
 python_backend/*.pyc
 .env
+.env.*
+!.env.example
+!.env.sample
+*.pem
+*.key
+*.p12
+*.pfx
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite
+*.sqlite3
+*.log
 
 # Build outputs (these are kept)
 # DO NOT add: out/ webview/dist/ media/
 node_modules/
 *.vsix
+
+# Local acceptance environments
+.local-test/
+
+.venv/
+.pytest_cache/
+python_backend/.pytest_cache/

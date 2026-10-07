@@ -1,0 +1,9 @@
+{
+  "host": "Installed VS Code 1.140.0",
+  "provider": "controlled local fixture",
+  "checks": [
+    "Actual terminal keyboard: salary > 8000 generates visible SQL; /run returns Cara/Dev",
+    "Actual follow-up retains salary filter and /run returns Dev"
+  ],
+  "terminalText": "Verbis Assistant\nSchema validation passed. /run target: Workspace datasets (datasets).\nType /run to execute, or keep chatting.\nverbis › /run\nExecuting…\n✓ 1 row(s) in 1 ms\n┌────┬──────┬────────┬────────────┐\n│ id │ name │ salary │ department │\n├────┼──────┼────────┼────────────┤\n│ 4  │ Dev  │ 12000  │ IT         │\n└────┴──────┴────────┴────────────┘\nverbis ›  \n"
+}

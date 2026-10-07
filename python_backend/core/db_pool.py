@@ -270,7 +270,7 @@ class DBPoolManager:
     def __init__(self) -> None:
         self._pools: Dict[str, Engine] = {}
 
-    def register(self, db_config_id: str, connection_url: str, pool_size: int = 5) -> Engine:
+    def register(self, db_config_id: str, connection_url: str, pool_size: int = 5, connect_args=None, validate=False) -> Engine:
         engine = create_engine(
             connection_url,
             poolclass=QueuePool,
@@ -279,8 +279,18 @@ class DBPoolManager:
             pool_timeout=30,
             pool_recycle=1800,
             pool_pre_ping=True,
+            connect_args=connect_args or {},
         )
+        if validate:
+            from sqlalchemy import text
+            try:
+                with engine.connect() as conn: conn.execute(text('SELECT 1'))
+            except Exception:
+                engine.dispose()
+                raise
+        old = self._pools.get(db_config_id)
         self._pools[db_config_id] = engine
+        if old: old.dispose()
         logger.info(f'Registered DB pool for {db_config_id}')
         return engine
 
@@ -311,10 +321,10 @@ def build_connection_url(dialect: str, host: str, port: int,
     not the extension install directory. Absolute SQLite paths are untouched.
     """
     pwd = quote_plus(password) if password else ''
-    auth = f'{user}:{pwd}' if pwd else user
+    auth = f'{quote_plus(user)}:{pwd}' if pwd else quote_plus(user)
 
     if dialect == 'postgresql':
-        return f'postgresql+psycopg2://{auth}@{host}:{port}/{database}'
+        return f'postgresql+psycopg2://{auth}@{host}:{port}/{quote_plus(database)}' + ('?sslmode=verify-full' if ssl else '')
     if dialect == 'mysql':
         return f'mysql+pymysql://{auth}@{host}:{port}/{database}'
     if dialect == 'sqlite':

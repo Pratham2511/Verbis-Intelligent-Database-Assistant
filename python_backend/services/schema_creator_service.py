@@ -11,6 +11,7 @@ create → query → optimize → explain.
 """
 
 import json
+import re
 from typing import Optional
 
 from openai import AsyncOpenAI
@@ -22,33 +23,8 @@ from services.llm_service import (
 )
 
 
-def _get_client(provider: str, api_key: str, model: Optional[str] = None) -> tuple:
-    """Returns (AsyncOpenAI client, model_name).
-
-    `model` is the user-configured override forwarded from the extension;
-    when blank the provider's current default is used.
-    """
-    if provider == "gemini":
-        return (
-            AsyncOpenAI(
-                api_key=api_key,
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            ),
-            (model or DEFAULT_GEMINI_MODEL),
-        )
-    elif provider == "groq":
-        return (
-            AsyncOpenAI(
-                api_key=api_key,
-                base_url="https://api.groq.com/openai/v1",
-            ),
-            (model or DEFAULT_GROQ_MODEL),
-        )
-    else:
-        return (
-            AsyncOpenAI(api_key="not-needed", base_url="http://localhost:11434/v1"),
-            (model or DEFAULT_LOCAL_MODEL),
-        )
+from services.llm_service import _get_client
+from services.llm_service import generation_options, completion_text
 
 
 SCHEMA_SYSTEM_PROMPT = """You are an expert database architect inside Verbis.
@@ -63,8 +39,10 @@ Rules:
 6. For many-to-many relationships, create a junction table.
 7. Normalize to 3NF — no redundant columns.
 8. Add NOT NULL where logically required.
-9. Add created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP to every table.
+9. Add created_at TIMESTAMP to every table. Verbis adds its CURRENT_TIMESTAMP default.
 10. Use snake_case for all names.
+11. Constraints may only be PRIMARY KEY, AUTO_INCREMENT, NOT NULL or UNIQUE.
+    Foreign keys use foreign_key objects. Do not put default expressions in constraints.
 
 Return ONLY a JSON object — no markdown, no explanation:
 {
@@ -109,18 +87,22 @@ async def generate_schema_from_nl(
 ) -> dict:
     """Convert NL description into structured schema JSON."""
     client, model = _get_client(provider, api_key, model)
-    r = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": SCHEMA_SYSTEM_PROMPT},
-            {"role": "user", "content": f"Dialect: {dialect}\nRequirements:\n{description}\n\nSchema JSON:"},
-        ],
-        temperature=0.1,
-        max_tokens=4096,
-    )
-    raw = r.choices[0].message.content.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+    try:
+        r = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": SCHEMA_SYSTEM_PROMPT},
+                {"role": "user", "content": f"Dialect: {dialect}\nRequirements:\n{description}\n\nSchema JSON:"},
+            ],
+            temperature=0.1,
+            max_tokens=4096,
+            **generation_options(provider, model),
+        )
+        raw = completion_text(r)
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        return json.loads(raw)
+    finally:
+        await client.close()
 
 
 def schema_to_ddl(schema: dict, dialect: str = "postgresql") -> str:
@@ -131,6 +113,8 @@ def schema_to_ddl(schema: dict, dialect: str = "postgresql") -> str:
     NOT inline in the column definition. Inline FK syntax works in SQLite
     but FAILS in PostgreSQL and MySQL. This is portable across all dialects.
     """
+    validate_schema(schema)
+    if dialect not in {'postgresql','mysql','sqlite'}: raise ValueError('Unsupported dialect')
     statements = []
 
     auto_inc_type = {
@@ -139,49 +123,74 @@ def schema_to_ddl(schema: dict, dialect: str = "postgresql") -> str:
         "sqlite": "INTEGER",
     }.get(dialect, "SERIAL")
 
-    for table in schema.get("tables", []):
+    quote = '`' if dialect == 'mysql' else '"'
+    identifier = lambda name: quote + name + quote
+    for table in ordered_tables(schema, dialect):
         cols = []
         fk_clauses = []
 
         for col in table.get("columns", []):
             constraints = col.get("constraints", [])
-            col_type = col["type"]
+            col_type = col["type"].upper()
 
             if "AUTO_INCREMENT" in constraints and "PRIMARY KEY" in constraints:
                 col_type = auto_inc_type
                 constraints = [c for c in constraints if c != "AUTO_INCREMENT"]
 
-            col_def = f"  {col['name']} {col_type}"
+            col_def = f"  {identifier(col['name'])} {col_type}"
             if "PRIMARY KEY" in constraints:
                 col_def += " PRIMARY KEY"
             if "NOT NULL" in constraints and "PRIMARY KEY" not in constraints:
                 col_def += " NOT NULL"
             if "UNIQUE" in constraints:
                 col_def += " UNIQUE"
-            if col["name"] == "created_at":
+            if col["name"] == "created_at" and col_type == 'TIMESTAMP':
                 col_def += " DEFAULT CURRENT_TIMESTAMP"
             cols.append(col_def)
 
             fk = col.get("foreign_key")
             if fk:
                 fk_clauses.append(
-                    f"  CONSTRAINT fk_{table['name']}_{col['name']} "
-                    f"FOREIGN KEY ({col['name']}) "
-                    f"REFERENCES {fk['references_table']}({fk['references_column']})"
+                    f"  CONSTRAINT {identifier(object_name('fk',table['name'],col['name']))} "
+                    f"FOREIGN KEY ({identifier(col['name'])}) "
+                    f"REFERENCES {identifier(fk['references_table'])}({identifier(fk['references_column'])})"
                 )
 
         all_cols = cols + fk_clauses
-        table_comment = f"-- {table.get('description', table['name'])}"
-        ddl = f"{table_comment}\nCREATE TABLE IF NOT EXISTS {table['name']} (\n" + ",\n".join(all_cols) + "\n);"
+        table_comment = f"-- {str(table.get('description', table['name'])).replace(chr(10), ' ').replace(chr(13), ' ')}"
+        ddl = f"{table_comment}\nCREATE TABLE IF NOT EXISTS {identifier(table['name'])} (\n" + ",\n".join(all_cols) + "\n);"
         statements.append(ddl)
 
         for idx_col in table.get("indexes", []):
             statements.append(
-                f"CREATE INDEX IF NOT EXISTS idx_{table['name']}_{idx_col} "
-                f"ON {table['name']}({idx_col});"
+                f"CREATE INDEX {'IF NOT EXISTS ' if dialect != 'mysql' else ''}{identifier(object_name('idx',table['name'],idx_col))} "
+                f"ON {identifier(table['name'])}({identifier(idx_col)});"
             )
 
     return "\n\n".join(statements)
+
+
+def object_name(prefix, table, column):
+    import hashlib
+    name = f'{prefix}_{table}_{column}'
+    return name if len(name) <= 63 else name[:54] + '_' + hashlib.sha256(name.encode()).hexdigest()[:8]
+
+
+def ordered_tables(schema, dialect):
+    tables = schema['tables']
+    if dialect == 'sqlite': return tables
+    remaining = list(tables)
+    created = set()
+    ordered = []
+    while remaining:
+        ready = [t for t in remaining if all(not c.get('foreign_key') or
+                 c['foreign_key']['references_table'] in created | {t['name']}
+                 for c in t['columns'])]
+        if not ready:
+            raise ValueError('Cyclic foreign keys require a separate reviewed migration for this dialect')
+        for table in ready:
+            ordered.append(table);created.add(table['name']);remaining.remove(table)
+    return ordered
 
 
 def schema_to_mermaid(schema: dict) -> str:
@@ -192,7 +201,8 @@ def schema_to_mermaid(schema: dict) -> str:
         for col in table.get("columns", []):
             cs = col.get("constraints", [])
             marker = "PK" if "PRIMARY KEY" in cs else ("FK" if col.get("foreign_key") else "")
-            lines.append(f"    {col['type']} {col['name']}{' ' + marker if marker else ''}")
+            diagram_type = re.sub(r'\(.*\)', '', col['type']).upper()
+            lines.append(f"    {diagram_type} {col['name']}{' ' + marker if marker else ''}")
         lines.append("  }")
     for rel in schema.get("relationships", []):
         rel_map = {
@@ -202,7 +212,7 @@ def schema_to_mermaid(schema: dict) -> str:
             "one_to_one": "||--||",
         }
         sym = rel_map.get(rel["type"], "||--o{")
-        desc = rel.get("description", rel["type"])[:30]
+        desc = re.sub(r'["\\\n\r<>]', ' ' , rel.get("description", rel["type"]))[:30]
         lines.append(f'  {rel["from_table"].upper()} {sym} {rel["to_table"].upper()} : "{desc}"')
     return "\n".join(lines)
 
@@ -222,19 +232,63 @@ async def refine_schema(
 ) -> dict:
     """Apply a NL refinement request to an existing schema. Returns the COMPLETE updated schema."""
     client, model = _get_client(provider, api_key, model)
-    r = await client.chat.completions.create(
-        model=model,
-        messages=[
-            {"role": "system", "content": SCHEMA_SYSTEM_PROMPT},
-            {"role": "user", "content": (
-                f"Existing schema:\n{json.dumps(existing_schema, indent=2)}\n\n"
-                f"Refinement: {refinement}\n\n"
-                f"Return the COMPLETE updated schema JSON including all existing tables:"
-            )},
-        ],
-        temperature=0.1,
-        max_tokens=4096,
-    )
-    raw = r.choices[0].message.content.strip()
-    raw = raw.replace("```json", "").replace("```", "").strip()
-    return json.loads(raw)
+    try:
+        r = await client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": SCHEMA_SYSTEM_PROMPT},
+                {"role": "user", "content": (
+                    f"Dialect: {dialect}\nExisting schema:\n{json.dumps(existing_schema, indent=2)}\n\n"
+                    f"Refinement: {refinement}\n\n"
+                    f"Return the COMPLETE updated schema JSON including all existing tables:"
+                )},
+            ],
+            temperature=0.1,
+            max_tokens=4096,
+            **generation_options(provider, model),
+        )
+        raw = completion_text(r)
+        raw = raw.replace("```json", "").replace("```", "").strip()
+        return json.loads(raw)
+    finally:
+        await client.close()
+
+
+def validate_schema(schema):
+    if not isinstance(schema,dict): raise ValueError('Schema must be an object')
+    tables=schema.get('tables')
+    if not isinstance(tables,list) or not tables: raise ValueError('Schema needs tables')
+    names=set()
+    for t in tables:
+        if not isinstance(t,dict) or not isinstance(t.get('name'),str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,62}',t['name']) or t['name'].lower() in names: raise ValueError('Invalid or duplicate table')
+        names.add(t['name'].lower())
+        cols=set()
+        if not isinstance(t.get('columns'),list) or not t['columns']: raise ValueError('Table needs columns')
+        primary_keys = 0
+        for c in t['columns']:
+            if not isinstance(c,dict) or not isinstance(c.get('name'),str) or not re.fullmatch(r'[A-Za-z_][A-Za-z0-9_]{0,62}',c['name']) or c['name'].lower() in cols: raise ValueError('Invalid or duplicate column')
+            cols.add(c['name'].lower())
+            if not isinstance(c.get('type'),str) or not re.fullmatch(r'(INT|INTEGER|BIGINT|SMALLINT|TEXT|REAL|FLOAT|DOUBLE|BOOLEAN|TIMESTAMP|DATE|VARCHAR\(\d+\)|DECIMAL\(\d+,\s*\d+\))',c['type'],re.I): raise ValueError('Unsupported type')
+            constraints=c.get('constraints',[])
+            if not isinstance(constraints,list) or any(not isinstance(x,str) for x in constraints): raise ValueError('Unsupported constraint')
+            allowed={'PRIMARY KEY','AUTO_INCREMENT','NOT NULL','UNIQUE'}
+            if c['name']=='created_at' and c['type'].upper()=='TIMESTAMP':allowed.add('DEFAULT CURRENT_TIMESTAMP')
+            if set(constraints)-allowed: raise ValueError('Unsupported constraint')
+            if 'AUTO_INCREMENT' in constraints and ('PRIMARY KEY' not in constraints or c['type'].upper() not in {'INT','INTEGER','BIGINT','SMALLINT'}):raise ValueError('Auto increment requires an integer primary key')
+            primary_keys += 'PRIMARY KEY' in constraints
+        if primary_keys > 1:raise ValueError('Composite primary keys require a separate reviewed migration')
+        indexes=t.get('indexes',[])
+        if not isinstance(indexes,list) or any(not isinstance(x,str) or x not in {c['name'] for c in t['columns']} for x in indexes): raise ValueError('Unknown indexed column')
+    for t in tables:
+        for c in t['columns']:
+            f=c.get('foreign_key')
+            if f:
+                if not isinstance(f,dict):raise ValueError('Invalid foreign key')
+                target=next((x for x in tables if x['name']==f.get('references_table')),None)
+                if not target or f.get('references_column') not in {x['name'] for x in target['columns']}: raise ValueError('Unknown foreign key target')
+                target_column=next(x for x in target['columns'] if x['name']==f['references_column'])
+                if not set(target_column.get('constraints',[])) & {'PRIMARY KEY','UNIQUE'}:raise ValueError('Foreign key target must be primary or unique')
+    relationships=schema.get('relationships',[])
+    if not isinstance(relationships,list):raise ValueError('Invalid relationships')
+    for rel in relationships:
+        if not isinstance(rel,dict) or rel.get('from_table') not in {t['name'] for t in tables} or rel.get('to_table') not in {t['name'] for t in tables} or rel.get('type') not in {'one_to_many','many_to_one','many_to_many','one_to_one'}:raise ValueError('Invalid relationship')

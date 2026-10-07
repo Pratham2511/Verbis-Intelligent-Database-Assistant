@@ -16,6 +16,7 @@ router = APIRouter()
 class ImpactRequest(BaseModel):
     proposed_ddl: str
     schema_context: str = ''
+    db_config_id: str
 
 
 @router.post('/impact')
@@ -23,7 +24,7 @@ async def analyze_impact(req: ImpactRequest, request: Request) -> Dict[str, Any]
     state = request.app.state.qm
     predictor = SchemaImpactPredictor(state.history_store)
     try:
-        impact = predictor.predict(req.proposed_ddl, db_config_id='default')
+        impact = predictor.predict(req.proposed_ddl, db_config_id=req.db_config_id)
         # predict() returns an ImpactResponse Pydantic model; serialize to a dict
         # to satisfy the Dict[str, Any] response type.
         return impact.model_dump()

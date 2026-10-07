@@ -1,18 +1,22 @@
 import * as vscode from 'vscode';
+import { DBConfig } from '../types';
 import { BackendClient } from '../services/BackendClient';
 import { WorkspaceService } from '../services/WorkspaceService';
 import { SecretsService } from '../services/SecretsService';
 export declare class VerbisPanel {
     private readonly context;
-    private readonly client;
+    private initialClient;
     private readonly workspace;
     private readonly secrets;
+    private readonly getClient?;
     static currentPanel: VerbisPanel | undefined;
     private static readonly viewType;
     private panel;
     private disposables;
+    private session;
+    private restored;
     private activeConnectionId;
-    static createOrShow(context: vscode.ExtensionContext, client: BackendClient | null, workspace: WorkspaceService, secrets: SecretsService): VerbisPanel;
+    static createOrShow(context: vscode.ExtensionContext, client: BackendClient | null, workspace: WorkspaceService, secrets: SecretsService, getClient?: () => BackendClient | null): VerbisPanel;
     private constructor();
     /**
      * Resolve the user-configured model for the active provider
@@ -20,6 +24,12 @@ export declare class VerbisPanel {
      * the local provider or blank values so the backend applies its default.
      */
     private resolveModel;
+    private get client();
+    private requestedTab;
+    private requestedConnection?;
+    editConnection(connection: DBConfig): void;
+    providerChanged(): void;
+    openTab(tab: string): void;
     /** Called by extension.ts when user selects a connection (verbis.selectConnection
      *  command) or after verbis.addConnection creates a new connection. */
     setActiveConnection(connectionId: string): void;

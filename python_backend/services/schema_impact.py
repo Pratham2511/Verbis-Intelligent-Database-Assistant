@@ -67,6 +67,7 @@ class SchemaImpactPredictor:
         auto_rewrite_count = 0
 
         for entry in history:
+            if entry.get('connectionId') != db_config_id: continue
             query_id = entry.get('id', '')
             nl_input = entry.get('nlInput', '')
             sql = entry.get('sql', '')

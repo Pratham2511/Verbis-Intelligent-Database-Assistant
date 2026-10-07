@@ -1,14 +1,15 @@
 import { ExecutionResult, SchemaInfo, SchemaChangeImpact, RobustnessReport, GlossaryTerm } from '../types';
 export declare class BackendClientError extends Error {
-    readonly kind: 'timeout' | 'auth' | 'rate_limit' | 'network' | 'server' | 'unknown';
+    readonly kind: 'cancelled' | 'timeout' | 'auth' | 'rate_limit' | 'network' | 'server' | 'unknown';
     readonly statusCode?: number | undefined;
-    constructor(message: string, kind: 'timeout' | 'auth' | 'rate_limit' | 'network' | 'server' | 'unknown', statusCode?: number | undefined);
+    constructor(message: string, kind: 'cancelled' | 'timeout' | 'auth' | 'rate_limit' | 'network' | 'server' | 'unknown', statusCode?: number | undefined);
 }
 export declare class BackendClient {
     private readonly baseUrl;
     private readonly defaultTimeoutMs;
+    private readonly token?;
     constructor(baseUrl: string, // e.g., http://127.0.0.1:8765
-    defaultTimeoutMs?: number);
+    defaultTimeoutMs?: number, token?: string | undefined);
     health(): Promise<{
         status: string;
         version: string;
@@ -22,7 +23,7 @@ export declare class BackendClient {
         provider: string;
         apiKey: string;
         model?: string;
-    }): Promise<{
+    }, signal?: AbortSignal): Promise<{
         schema: unknown;
         ddl: string;
         mermaid: string;
@@ -35,7 +36,7 @@ export declare class BackendClient {
         provider: string;
         apiKey: string;
         model?: string;
-    }): Promise<{
+    }, signal?: AbortSignal): Promise<{
         schema: unknown;
         ddl: string;
         mermaid: string;
@@ -50,11 +51,20 @@ export declare class BackendClient {
         dbConfigId: string;
         sessionId: string;
         llmMode?: 'cloud' | 'local' | 'auto';
+        conversation?: Array<{
+            role: string;
+            content: string;
+        }>;
+        privacyEnabled?: boolean;
         disambiguationAnswers?: Record<string, string>;
         apiKey?: string;
         provider?: string;
         model?: string;
-    }): Promise<{
+    }, signal?: AbortSignal): Promise<{
+        validation?: string;
+        connectionId?: string;
+        schemaFingerprint?: string;
+        parameters?: Record<string, unknown>;
         /** Generated SQL, normalized from the backend's `query` field. Undefined when off-topic. */
         sql?: string;
         confidence: number;
@@ -74,6 +84,8 @@ export declare class BackendClient {
         queryNodeId?: string;
         /** True when the intent guard rejected the request as off-topic. */
         offtopic?: boolean;
+        /** A provider response was received; deterministic local guards do not verify keys. */
+        providerVerified?: boolean;
         /** Polite off-topic / informational message from the backend. */
         message?: string;
     }>;
@@ -83,7 +95,9 @@ export declare class BackendClient {
         rowLimit?: number;
         readOnly?: boolean;
         timeoutSeconds?: number;
-    }): Promise<ExecutionResult>;
+        requestId?: string;
+        parameters?: Record<string, unknown>;
+    }, signal?: AbortSignal): Promise<ExecutionResult>;
     getSchema(dbConfigId: string): Promise<{
         tables: SchemaInfo[];
         indexed: boolean;
@@ -106,6 +120,10 @@ export declare class BackendClient {
     saveGlossaryTerm(term: GlossaryTerm): Promise<{
         success: boolean;
     }>;
+    cancelExecution(requestId: string): Promise<void>;
+    registerConnection(connection: unknown, password: string, validateOnly?: boolean): Promise<void>;
+    deleteConnection(id: string): Promise<void>;
+    workspaceAction(action: string, payload?: unknown): Promise<any>;
     shutdown(): Promise<void>;
     private requestJson;
     /**

@@ -14,7 +14,7 @@ import ReactFlow, {
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { QueryTree as QueryTreeData, QueryNode } from '../../../src/types';
-import { onMessage, postMessage } from '../vscode';
+import { onMessage, postMessage,request } from '../vscode';
 
 const STATUS_COLOR: Record<QueryNode['status'], string> = {
   success: '#4ec9b0',
@@ -27,15 +27,16 @@ export default function QueryTreeView() {
   const [tree, setTree] = useState<QueryTreeData>({ nodes: {}, rootIds: [], checkpoints: [] });
   const [selectedNodeIds, setSelectedNodeIds] = useState<string[]>([]);
   const [rfNodes, setRfNodes] = useState<Node[]>([]);
+  const [comparison,setComparison]=useState(''),[label,setLabel]=useState(''),[error,setError]=useState('');
   const [rfEdges, setRfEdges] = useState<Edge[]>([]);
 
   useEffect(() => {
-    postMessage('LOAD_TREE', {});
     const off = onMessage(msg => {
       if (msg.type === 'TREE_UPDATED') {
         setTree(msg.payload as QueryTreeData);
       }
     });
+    postMessage('LOAD_TREE', {});
     return off;
   }, []);
 
@@ -99,38 +100,14 @@ export default function QueryTreeView() {
     });
   }, []);
 
-  const fork = () => {
-    if (selectedNodeIds.length !== 1) return;
-    postMessage('NODE_FORKED', {
-      parentId: selectedNodeIds[0],
-      sql: tree.nodes[selectedNodeIds[0]]?.sql,
-    });
-  };
-
-  const compare = () => {
-    if (selectedNodeIds.length !== 2) return;
-    const a = tree.nodes[selectedNodeIds[0]];
-    const b = tree.nodes[selectedNodeIds[1]];
-    if (!a || !b) return;
-    alert(
-      `Comparison:\n\n` +
-      `Node A: ${a.nlInput}\n  SQL: ${a.sql.slice(0, 100)}\n  ${a.executionTimeMs}ms, ${a.rowCount} rows\n\n` +
-      `Node B: ${b.nlInput}\n  SQL: ${b.sql.slice(0, 100)}\n  ${b.executionTimeMs}ms, ${b.rowCount} rows`
-    );
-  };
-
-  const checkpoint = () => {
-    if (selectedNodeIds.length !== 1) return;
-    const label = prompt('Checkpoint label:');
-    if (!label) return;
-    postMessage('NODE_CHECKPOINTED', {
-      nodeId: selectedNodeIds[0],
-      label,
-    });
-  };
+  const mutate=async(action:string,payload:any)=>{try{setTree(await request('WORKSPACE_ACTION',{action,payload}));setError('')}catch(e){setError((e as Error).message)}};
+  const fork=()=>selectedNodeIds.length===1&&mutate('tree_fork',{nodeId:selectedNodeIds[0]});
+  const checkpoint=()=>selectedNodeIds.length===1&&mutate('tree_checkpoint',{nodeId:selectedNodeIds[0],label});
+  const compare=()=>{if(selectedNodeIds.length!==2)return;setComparison(selectedNodeIds.map(id=>{const n=tree.nodes[id];return `${n.nlInput}\nConnection: ${(n as any).connectionId}\n${n.sql}\nStatus: ${n.status}; ${n.executionTimeMs??'not measured'} ms; ${n.rowCount??'not measured'} rows`}).join('\n\nCompared with:\n\n'))};
 
   return (
     <div className="w-full h-full relative">
+      {(comparison||error)&&<div className="p-4"><pre style={{whiteSpace:'pre-wrap'}}>{comparison}</pre><p role="alert">{error}</p></div>}
       {/* Toolbar */}
       <div className="absolute top-2 left-2 z-10 flex gap-2 bg-[var(--vscode-editorWidget-background)] p-2 rounded border border-qm-border">
         <button
@@ -147,6 +124,7 @@ export default function QueryTreeView() {
         >
           Compare
         </button>
+        <input aria-label="Checkpoint label" placeholder="Checkpoint label" value={label} onChange={e=>setLabel(e.target.value)}/>
         <button
           onClick={checkpoint}
           disabled={selectedNodeIds.length !== 1}

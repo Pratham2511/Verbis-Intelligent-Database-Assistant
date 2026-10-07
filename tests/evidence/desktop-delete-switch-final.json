@@ -1,0 +1,7 @@
+{
+  "host": "Installed VS Code 1.140.0 on private Xvfb display; 1.5.0",
+  "checks": [
+    "Native-confirmed disposable delete disables repeat actions, acknowledges removal, clears form and preserves database file",
+    "Actual Gemini→Groq→Gemini switches require a new credential choice; old session key is discarded and never sent to Groq"
+  ]
+}

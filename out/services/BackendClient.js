@@ -23,30 +23,32 @@ exports.BackendClientError = BackendClientError;
 class BackendClient {
     baseUrl;
     defaultTimeoutMs;
+    token;
     constructor(baseUrl, // e.g., http://127.0.0.1:8765
-    defaultTimeoutMs = 90_000) {
+    defaultTimeoutMs = 90_000, token) {
         this.baseUrl = baseUrl;
         this.defaultTimeoutMs = defaultTimeoutMs;
+        this.token = token;
     }
     // ─── Health Check ────────────────────────────────────────────────────
     async health() {
-        return this.requestJson('/api/health', 'GET');
+        return this.requestJson('/api/health', 'GET', undefined, undefined, 1500);
     }
     // ── Intent cache invalidation (Fix B) ──────────────────────────────
     async clearIntentCache() {
         return this.requestJson('/api/intent/cache/clear', 'POST');
     }
     // ── Text2Schema (Novel #4 — arXiv 2503.23886) ──────────────────────
-    async createSchema(payload) {
+    async createSchema(payload, signal) {
         return this.requestJson('/api/schema/create', 'POST', {
             description: payload.description,
             dialect: payload.dialect,
             provider: payload.provider,
             api_key: payload.apiKey,
             model: payload.model,
-        });
+        }, signal);
     }
-    async refineSchema(payload) {
+    async refineSchema(payload, signal) {
         return this.requestJson('/api/schema/refine', 'POST', {
             existing_schema: payload.schema,
             refinement: payload.refinement,
@@ -54,7 +56,7 @@ class BackendClient {
             provider: payload.provider,
             api_key: payload.apiKey,
             model: payload.model,
-        });
+        }, signal);
     }
     // ── Schema refresh after DDL (Fix C + Fix F) ────────────────────────
     // Forces schema.py to delete stale schema_cache.json and re-index ChromaDB.
@@ -71,11 +73,13 @@ class BackendClient {
     // setting, then forwarded to the Python backend, which uses them for the
     // actual Gemini / Groq / Ollama API call. No API key is ever stored on
     // the Python side.
-    async generate(payload) {
+    async generate(payload, signal) {
         // Translate our internal field names to the Python backend's expected
         // request body shape (per python_backend/models/requests.py).
         const backendPayload = {
             nl_query: payload.nlInput,
+            privacy_enabled: payload.privacyEnabled ?? true,
+            conversation: payload.conversation ?? [],
             schema_context: payload.disambiguationAnswers
                 ? JSON.stringify(payload.disambiguationAnswers)
                 : '',
@@ -89,8 +93,9 @@ class BackendClient {
         };
         // The backend returns the generated SQL under `query` (NOT `sql`), and
         // signals off-topic rejections with `offtopic: true` + `message`.
-        const raw = await this.requestJson('/api/generate', 'POST', backendPayload);
+        const raw = await this.requestJson('/api/generate', 'POST', backendPayload, signal);
         return {
+            validation: raw.validation, connectionId: raw.connectionId, schemaFingerprint: raw.schemaFingerprint, parameters: raw.parameters ?? {},
             sql: raw.query ?? undefined,
             confidence: raw.confidence ?? 0,
             alternatives: raw.alternatives ?? [],
@@ -100,20 +105,23 @@ class BackendClient {
             ambiguityQuestions: raw.ambiguityQuestions,
             queryNodeId: raw.queryNodeId,
             offtopic: raw.offtopic,
+            providerVerified: raw.providerVerified === true,
             message: raw.message,
         };
     }
     // ─── SQL Execution ──────────────────────────────────────────────────
-    async execute(payload) {
+    async execute(payload, signal) {
         // Translate to the Python backend's ExecuteRequest field names
         // (snake_case per python_backend/models/requests.py).
         return this.requestJson('/api/execute', 'POST', {
             sql: payload.sql,
+            request_id: payload.requestId,
+            parameters: payload.parameters ?? {},
             connection_id: payload.dbConfigId,
             row_limit: payload.rowLimit ?? 500,
             read_only: payload.readOnly,
             timeout_seconds: payload.timeoutSeconds,
-        });
+        }, signal, ((payload.timeoutSeconds ?? 60) + 5) * 1000);
     }
     // ─── Schema Introspection + ChromaDB Indexing ───────────────────────
     async getSchema(dbConfigId) {
@@ -121,7 +129,7 @@ class BackendClient {
     }
     // ─── Schema Change Impact Analysis (#9) ─────────────────────────────
     async analyzeImpact(payload) {
-        return this.requestJson('/api/schema/impact', 'POST', payload);
+        return this.requestJson('/api/schema/impact', 'POST', { proposed_ddl: payload.ddl, db_config_id: payload.dbConfigId });
     }
     // ─── EvoSchema Robustness Test (#16) ────────────────────────────────
     async runRobustness(payload) {
@@ -134,23 +142,39 @@ class BackendClient {
     async saveGlossaryTerm(term) {
         return this.requestJson('/api/glossary', 'POST', term);
     }
+    async cancelExecution(requestId) {
+        await this.requestJson(`/api/execute/cancel/${encodeURIComponent(requestId)}`, 'POST');
+    }
+    async registerConnection(connection, password, validateOnly = false) {
+        await this.requestJson('/api/connections', 'POST', { connection, password, validate_only: validateOnly });
+    }
+    async deleteConnection(id) {
+        await this.requestJson(`/api/connections/${encodeURIComponent(id)}`, 'DELETE');
+    }
+    async workspaceAction(action, payload) {
+        return this.requestJson(`/api/workspace/${action}`, 'POST', { payload: payload ?? {} });
+    }
     // ─── Shutdown ────────────────────────────────────────────────────────
     async shutdown() {
         try {
-            await this.requestJson('/api/shutdown', 'DELETE');
+            await this.requestJson('/api/shutdown', 'DELETE', undefined, undefined, 1500);
         }
         catch {
             // Best-effort
         }
     }
     // ─── Core fetch wrapper ──────────────────────────────────────────────
-    async requestJson(path, method, body) {
+    async requestJson(path, method, body, signal, timeoutMs = this.defaultTimeoutMs) {
         const controller = new AbortController();
-        const timer = setTimeout(() => controller.abort(), this.defaultTimeoutMs);
+        const onAbort = () => controller.abort();
+        signal?.addEventListener('abort', onAbort, { once: true });
+        if (signal?.aborted)
+            controller.abort();
+        const timer = setTimeout(() => controller.abort(), timeoutMs);
         try {
             const res = await fetch(`${this.baseUrl}${path}`, {
                 method,
-                headers: body ? { 'Content-Type': 'application/json' } : undefined,
+                headers: { ...(body ? { 'Content-Type': 'application/json' } : {}), ...(this.token ? { Authorization: `Bearer ${this.token}` } : {}) },
                 body: body ? JSON.stringify(body) : undefined,
                 signal: controller.signal,
             });
@@ -161,14 +185,10 @@ class BackendClient {
                 // the raw JSON blob, so users never see `{"detail":"Not Found"}`.
                 const detail = BackendClient.extractDetail(text);
                 if (res.status === 401) {
-                    throw new BackendClientError('Invalid API key', 'auth', 401);
+                    throw new BackendClientError(detail, 'auth', 401);
                 }
                 if (res.status === 429) {
                     throw new BackendClientError('Rate limited by LLM provider', 'rate_limit', 429);
-                }
-                if (res.status === 404) {
-                    throw new BackendClientError(`The backend does not recognize this request (${method} ${path}). ` +
-                        'The extension and backend may be out of sync — try "Verbis: Restart Python Backend".', 'unknown', 404);
                 }
                 if (res.status >= 500) {
                     throw new BackendClientError(`Backend error: ${detail}`, 'server', res.status);
@@ -181,12 +201,13 @@ class BackendClient {
             if (err instanceof BackendClientError)
                 throw err;
             if (err.name === 'AbortError') {
-                throw new BackendClientError('Request timed out', 'timeout');
+                throw new BackendClientError(signal?.aborted ? 'Request cancelled' : 'Request timed out', signal?.aborted ? 'cancelled' : 'timeout');
             }
             throw new BackendClientError(`Network error: ${err.message}`, 'network');
         }
         finally {
             clearTimeout(timer);
+            signal?.removeEventListener('abort', onAbort);
         }
     }
     /**

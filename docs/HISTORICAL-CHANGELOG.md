@@ -1,0 +1,566 @@
+# Historical changelog
+
+Preserved verbatim from baseline 77b1422. These are historical release claims, not new acceptance results. Current verification is in ISSUE-LEDGER.md.
+
+# Changelog
+
+## [1.4.0] — 2026-09-03
+
+Connection management: edit and delete database connections directly from the sidebar.
+
+### Added
+
+- **Edit Database Connection.** Right-click a connection in the **Connections** sidebar (or run `Verbis: Edit Database Connection`) to update its name, dialect, host, port, database, or user. The form is prefilled with the existing values and updates the connection in place (same id, no duplicates). Leaving the password field blank keeps the currently stored password; entering a new one replaces it in the OS keychain. The connection stays active after editing.
+- **Delete Database Connection.** Right-click a connection (or run `Verbis: Delete Database Connection`) to remove it. A confirmation dialog makes clear that deleting a Verbis connection does **not** delete the underlying database or any database files. The stored password is removed from the OS keychain, and the active connection resets to the last remaining connection (or the schema cache is cleared if none remain).
+
+### Improved
+
+- The Add/Edit connection flow now shares a single form implementation, so both behave consistently (dialect quick-pick keeps the current dialect first when editing, so pressing Enter keeps it).
+- The backend restarts automatically after a connection is edited or deleted so the change takes effect immediately.
+
+## [1.3.0] — 2026-09-03
+
+A redesigned, fully dynamic assistant terminal, a natural-language schema-context fix, and keyboard-shortcut conflict resolutions.
+
+### Improved
+
+- **Redesigned assistant terminal.** The Verbis terminal now opens with a clean, modern header and a live status panel that always reflects current state — active connection (name and dialect), database, schema size (table/column counts), AI provider, model, and execution mode (read-only vs. write). Nothing is hard-coded; every line is rendered from the current session, connection, and workspace schema cache.
+- **Clearer query results.** Result sets render as properly aligned box-drawing tables with dynamic column widths, `NULL` styling, long-value truncation, and explicit zero-row and row-limit messaging, with a `✓ N row(s) in M ms` summary.
+- **Clearer feedback.** Generated SQL, off-topic refusals, cancellations, read-only blocks, and errors each have distinct, consistent presentation (`✓` / `◇` / `✗`), and write-operation hints surface before execution when read-only mode is active.
+- `/status`, `/model`, and `/help` now report live provider/model/connection information.
+
+### Fixed
+
+- Natural-language queries no longer ask the user to provide schema when a connection is active. When the client sends an empty schema context, the backend now builds one from live schema introspection (falling back to the schema RAG index), so the LLM prompt always includes the relevant tables and columns.
+- Resolved keyboard-shortcut conflicts with built-in VS Code commands: Show Schema moved from `Ctrl+Shift+S` (Save As) to `Ctrl+Alt+S`, and Open Query Tree moved from `Ctrl+Shift+T` (Reopen Closed Editor) to `Ctrl+Alt+T` (`Cmd` on macOS).
+- Robustness and schema-impact endpoints now serialize their responses correctly, fixing `ResponseValidationError` failures on those routes.
+
+## [1.2.9] — 2026-08-29
+
+SQLite database resolution consistency, schema sidebar loading, and a PII over-masking fix.
+
+### Fixed
+
+- SQLite connections now consistently resolve to the canonical workspace database at `.qmind/databases/<name>.db`. TypeScript and Python path-resolution logic are aligned, and legacy installed-extension database discovery is version-independent (no hard-coded extension versions).
+- The Schema sidebar now loads the connected database schema correctly. A stale empty `schema_cache.json` (written when the canonical database was a placeholder) is no longer returned verbatim; an empty cache is treated as a miss and re-introspected, so tables and columns (e.g. `School` with `ID`, `Name`, `Depart`) populate reliably.
+- PII masking no longer redacts ordinary single-word values. A column merely named `Name` (e.g. `School.Name`) is no longer classified as person-name PII by column name alone, so values such as `Luca` display unmasked. Person-name detection now relies on value-pattern matching and Presidio, so genuine PII/full names (e.g. `John Doe`) remain protected.
+
+### Packaging
+
+- VSIX packaging now excludes Python virtual environments (`.venv`, `python_backend/.venv`), `.pytest_cache`, `__pycache__`, `*.pyc`, generated VSIX files, and other temporary/local artifacts.
+
+## [1.2.8] — 2026-08-28
+
+Workspace-owned SQLite database paths, legacy database migration, and database location controls in the Connections sidebar.
+
+## [1.2.7] — 2026-08-28
+
+Dialect-aware SQL generation and safe multi-statement execution.
+
+### Fixed
+
+- SQL generation now detects and respects the active database dialect instead of assuming PostgreSQL.
+- SQLite connections now generate SQLite-compatible catalog and metadata queries, preventing failures caused by PostgreSQL-only `information_schema` SQL.
+- `/run` now supports valid multi-statement SQL generated by the assistant, including workflows such as `CREATE TABLE` followed by `INSERT`.
+- Multi-statement execution no longer sends an entire SQL script through a single SQLite statement execution call.
+- Read-only mode now validates every statement in a multi-statement request, preventing write operations from bypassing execution restrictions.
+- SQL statements containing semicolons inside valid string literals, quoted identifiers, or comments are handled by SQL-aware parsing rather than naive string splitting.
+
+### Improved
+
+- Database dialect detection is derived from the active registered SQLAlchemy connection.
+- SQL generation receives authoritative dialect context from the connected database.
+- Multi-statement scripts execute sequentially with improved transaction handling.
+- Execution failures identify the statement that failed.
+- Multi-statement execution reports the number of statements successfully executed where applicable.
+- SQLite dialect and multi-statement behavior now have dedicated regression coverage.
+
+### Notes
+
+- SQLite DDL transaction behavior is subject to SQLite's native semantics. In certain failure scenarios, earlier DDL such as `CREATE TABLE` may persist even when a later statement fails. This is a SQLite engine behavior, not a Verbis rollback guarantee.
+
+## [1.2.6] — 2026-08-28
+
+Execution settings propagation and SQL write-handling fixes.
+
+### Fixed
+
+- Fixed `/run` execution settings not being fully propagated from the VS Code extension to the Python backend. The `readOnlyByDefault` and `timeoutSeconds` settings are now read fresh on every `/run` and sent with the request, so changes take effect immediately without a backend restart.
+- Write mode is now respected correctly during execution, including explicit write mode overrides. An explicit `read_only=false` in the request now correctly overrides the backend's default instead of being discarded.
+- Fixed SQL validation failures caused by incompatible `sqlglot` PostgreSQL dialect names. `sqlglot` 30.x renamed the dialect `postgresql` to `postgres`; the validator and schema-impact analysis now use the valid dialect name, so read-only `SELECT` statements are no longer incorrectly blocked with `403`.
+- Fixed compatibility with the current `sqlglot` handling of `EXPLAIN` statements (`exp.Explain` was removed; `EXPLAIN` now parses as a `Command`).
+- Fixed a backend execution failure where DDL and DML statements such as `CREATE TABLE` and `INSERT` could return a server error because the execution layer assumed every SQL statement produced result rows. Non-row statements now commit and return an empty result.
+
+### Improved
+
+- Execution timeout settings can now be passed through the `/run` request contract.
+- Backend execution behavior is more consistent across `SELECT`, DDL, and DML statements.
+- Added regression coverage for the read-only execution policy and request contract.
+- Improved reliability of database write operations when write mode is enabled.
+
+## [1.2.5] — 2026-08-21
+
+Backend connection registration fix.
+
+### Fixed
+
+- **Root cause:** The extension spawned the Python backend process without providing the secure database passwords, and the backend initialized an empty connection pool without reading the user's saved connections from `.qmind/config.json`. This resulted in `404 (No DB connection registered)` errors when calling `/run` or other execution routes.
+- **Fix:** `BackendManager` now reads the connections and passwords securely from VS Code's `SecretStorage` and injects them as environment variables (`QM_DB_PASSWORD_<id>`) when spawning the Python process. The Python backend's `dependencies.py` now parses `.qmind/config.json` on startup and correctly populates the connection pool. Added an automatic backend restart when adding a new connection so it takes effect immediately.
+
+## [1.2.4] — 2026-08-21
+
+Backend execution contract fix + enhanced diagnostics.
+
+### Fixed
+
+- Corrected the `/run` execution payload mapping (`dbConfigId` → `connection_id`, `rowLimit` → `row_limit`) to match the backend's strict Pydantic requirements. This resolves the `422 Unprocessable Entity (Field required)` error on query execution.
+- Removed the unused `timeoutSeconds` parameter from the client execution payload (timeouts are governed server-side).
+
+### Improved
+
+- Enhanced the backend HTTP client error diagnostics to explicitly surface FastAPI Pydantic validation field locations (e.g., `body → connection_id: Field required`) instead of a generic "Field required" message.
+
+## [1.2.3] — 2026-08-20
+
+Terminal assistant response-flow and scope-handling fixes.
+
+### Fixed
+
+- Generated SQL is now correctly normalized from the backend `query` field,
+  preserved as the latest executable SQL, and used by `/run`.
+- The terminal no longer claims SQL is ready when no executable SQL was
+  returned.
+- Off-topic and unrelated prompts are handled separately, without fake
+  confidence, SQL success, or `/run` guidance, and do not overwrite valid
+  previously generated SQL.
+
+### Improved
+
+- Generated SQL is visibly displayed before execution guidance.
+- Terminal states are clearer for SQL, informational, unrelated, and backend
+  error responses.
+- `/run` with unsupported arguments now explains that it executes the most
+  recently generated SQL.
+- README usage and scope documentation reflect the current terminal behavior.
+
+## [1.2.2] — 2026-08-20
+
+Gemini model retirement fix + documentation overhaul.
+
+### Fixed — Gemini 404 "model no longer available"
+
+- **Root cause:** the Gemini model was hardcoded as `gemini-2.5-flash` in three
+  separate backend `_get_client` functions (`llm_service.py`,
+  `intent_service.py`, `schema_creator_service.py`). Google retired that model
+  for new users, so every Gemini call returned HTTP 404. The
+  `verbis.llm.geminiModel` VS Code setting existed but was **never read by any
+  code** — a dead setting — so users had no way to override the retired model.
+- **Fix:** the default Gemini model is now `gemini-3.6-flash`, defined once as
+  `DEFAULT_GEMINI_MODEL` in `llm_service.py` and shared by the other services.
+  The `verbis.llm.geminiModel` / `verbis.llm.groqModel` settings are now read
+  by the extension and forwarded per-request through `BackendClient` →
+  `GenerateRequest.model` → the backend `_get_client`, so the configured model
+  is the one actually sent to the provider. Verified: the exact model string
+  reaching the Gemini API is `gemini-3.6-flash` by default and honors user
+  overrides.
+
+### Added — Retired-model detection with actionable errors
+
+- The backend detects retired/unknown-model errors (provider 404, "no longer
+  available", "not found", or a known-retired model name) and returns a clear
+  `400` naming the configured model, why it failed, which setting to update
+  (`verbis.llm.geminiModel`), and the supported default — instead of a raw
+  provider 404. API keys are never included in the message.
+
+### Added — Migration-safe warning for explicit retired settings
+
+- If you have **explicitly** set `verbis.llm.geminiModel` to a retired model
+  (e.g. `gemini-2.5-flash`), Verbis shows a one-time, non-destructive warning
+  with an "Open Settings" action. Your setting is never overwritten — fresh
+  installs simply default to `gemini-3.6-flash`.
+
+### Changed — Documentation
+
+- README rewritten to describe the **current** product (terminal assistant,
+  slash commands, scope guard, credential choice, Text2Schema, configuration).
+  Removed the accumulated "What's New in vX.Y.Z" running history and stale
+  references (webview chat as the primary interface, `gemini-2.5-flash` as the
+  default, retired commands). Version history now lives only in this
+  CHANGELOG.
+
+## [1.2.1] — 2026-08-19
+
+Corrective patch release. v1.2.0 shipped several regressions; this release
+fixes them and tightens security, scope enforcement, and UX.
+
+### Fixed — Terminal could not reach the backend (HTTP 404 on every question)
+
+- **Root cause:** FastAPI double-prefix. `generate.py` and `schema_create.py`
+  declared absolute route paths (`/api/generate`, `/api/schema/create`) while
+  `main.py` also mounted those routers with `prefix='/api'`, so the routes
+  were registered at `/api/api/generate` and `/api/api/schema/create`. The
+  client POSTs to `/api/generate` → `404 {"detail":"Not Found"}`.
+- **Fix:** all route paths are now relative (`/generate`, `/schema/create`,
+  …) and `schema_create` is mounted with `prefix='/api'` like every other
+  router. Verified live: `/api/health`→200, `/api/generate`→route resolves,
+  `/api/execute`→422 (validation), `/api/intent/cache/clear`→200,
+  `/api/schema/create`→route resolves.
+
+### Fixed — Raw JSON / cryptic errors shown to the user
+
+- `BackendClient` now extracts FastAPI's `detail` field (string or validation
+  array) instead of dumping the raw response body into the terminal.
+- A `404` now produces an actionable message ("extension and backend may be
+  out of sync — try Verbis: Restart Python Backend") instead of
+  `HTTP 404: {"detail":"Not Found"}`.
+- The backend now maps LLM client errors to clean HTTP errors: a missing or
+  invalid API key returns `401` with "No valid API key for the selected
+  provider. Run 'Verbis: Set API Key'…" instead of a bare
+  `500 Internal Server Error`; rate limits return `429`.
+
+### Added — Explicit API-key source choice (no silent consumption)
+
+- The first time you ask a question in a session, if a configured key exists
+  you now choose explicitly: **Use existing configured key**, **Use a
+  different key for this session only**, or **Manage keys…**. Cancelling
+  aborts the question — a stored key is never consumed silently.
+- A session-specific key is held in memory only, never written to
+  SecretStorage, and is discarded when the terminal closes or on `/reset`.
+- `/status` now shows which credential source is active.
+
+### Added — Deterministic SQL-only scope gate
+
+- A deterministic pre-filter now runs before the LLM intent classifier.
+  Obvious off-topic requests (jokes, poems, weather, recipes, trivia) are
+  rejected instantly with a polite message and **zero API cost**; obvious
+  database requests skip the classifier entirely. Ambiguous input still falls
+  through to the existing few-shot LLM classifier, which fails open.
+- Database signals win over off-topic keywords, so polysemous queries like
+  "weather data from the sensors table" are correctly treated as in-scope.
+
+### Fixed — Sidebar
+
+- Removed stale `verbis.openChat` command references (the command no longer
+  exists) — replaced with `verbis.openAssistant`. Clicking an empty-state
+  item no longer throws "command not found".
+- The Schema view no longer shows a perpetual "Backend starting…" spinner
+  when the backend is stopped or crashed. It now shows an actionable
+  "Backend not running — start" / "Backend crashed — restart" item that runs
+  `Verbis: Restart Python Backend`; the spinner only appears while the
+  backend is genuinely starting.
+- Empty-state text updated from "open the chat" to "open the assistant".
+
+### Fixed — Blank Activity Bar icon
+
+- `media/sidebar.svg` used a solid teal fill with white text, which VS Code's
+  Activity Bar masks to an invisible square. Rewritten as a monochrome
+  `currentColor` glyph (database cylinder + query spark) so it themes
+  correctly.
+
+### Removed — Accidental Kimi (Moonshot) runtime integration
+
+- v1.2.0 added Kimi as a runtime LLM provider by mistake. All runtime
+  integration removed: the `kimi` provider branch in the backend LLM service,
+  the `kimi_model` config field, the `kimi` provider enum and `kimiModel`
+  setting in `package.json`, and Kimi key handling in `SecretsService` /
+  `extension.ts`. Genuine providers (`gemini`, `groq`, `local`) are
+  unchanged.
+
+## [1.2.0] — 2026-08-19
+
+### Changed — Terminal assistant replaces the webview chat (major UX change)
+
+The conversational interface is now a **Claude Code–style REPL hosted in VS
+Code's integrated terminal** (via the `Pseudoterminal` API), instead of a
+React webview chat. The terminal is the primary and default way to talk to
+Verbis.
+
+- **New command `Verbis: Open Assistant`** (`Ctrl+Shift+Q`) opens the
+  assistant terminal. Re-running it focuses the existing terminal rather
+  than spawning duplicates.
+- **Real terminal behavior:** live typing, cursor, backspace, Enter to send,
+  Ctrl+C to cancel the in-flight request (or clear the line when idle).
+- **Slash commands handled locally:** `/help` `/run` `/status` `/model`
+  `/history` `/clear` `/reset` `/cancel` `/exit`. They never reach the
+  backend.
+- **One request at a time:** while the agent is working, further Enter
+  presses are ignored with a notice; Ctrl+C cancels.
+- **Conversation context preserved** per terminal via a stable `sessionId`
+  forwarded to the backend on every turn; `/reset` starts a fresh session.
+- **Generation vs. execution stay distinct:** the agent generates SQL;
+  `/run` explicitly executes the last generated statement through the
+  existing execution path (row limits, read-only guard, history logging).
+
+### Added — Kimi (Moonshot AI) provider
+
+- New `kimi` provider option routes through the existing provider
+  abstraction to Moonshot AI's OpenAI-compatible endpoint
+  (`https://api.moonshot.ai/v1`), defaulting to the **Kimi K3** model.
+- Configurable via `verbis.llm.kimiModel`; API key stored in VS Code
+  SecretStorage (`Verbis: Set API Key` → Kimi). Keys are never logged or
+  persisted server-side.
+
+### Architecture
+
+- **`src/assistant/AssistantSession.ts`** (new) — UI-independent
+  conversational controller. Owns session state, busy flag, and
+  cancellation; delegates all SQL generation/execution to the existing
+  `BackendClient` pipeline. No agent logic is duplicated in the UI layer.
+- **`src/terminal/VerbisTerminal.ts`** (new) — the `Pseudoterminal` REPL:
+  keystroke handling, output formatting, slash commands.
+- **`src/terminal/TerminalManager.ts`** (new) — terminal lifecycle (create,
+  reuse, cleanup).
+
+### Removed — old chat from the main flow
+
+- Removed the `verbis.chatView` sidebar webview and its `ChatViewProvider`.
+- Removed the `Verbis: Open Chat` and `Verbis: Open Chat in Editor Panel`
+  commands (the terminal supersedes them).
+- Removed the chat tab and its components from the React webview
+  (`ChatPanel`, `MessageBubble`, `SQLCodeBlock`, `ConfidenceBar`,
+  `NarrativeCard`, `ResultTable`). The webview bundle remains for the
+  schema / glossary / query-tree / connections panels.
+
+Backend functionality, connection management, schema/history sidebar trees,
+settings, and API-key commands are unchanged.
+
+---
+
+## [1.1.5] — 2026-08-19
+
+### Added — Sidebar chat (Copilot-Chat-style)
+
+- New `verbis.chatView` sidebar webview (`ChatViewProvider`, a
+  `vscode.WebviewViewProvider`) inside the Verbis activity-bar container —
+  the chat now opens next to your code like Copilot Chat / Cline instead of
+  only as an editor tab.
+- `Verbis: Open Chat` (`Ctrl+Shift+Q`) now focuses the sidebar chat view.
+- The editor-tab chat panel is still available via the new
+  `Verbis: Open Chat in Editor Panel` command.
+- The sidebar chat shares the same React bundle and full message protocol
+  (GENERATE_SQL, EXECUTE_SQL, glossary, Text2Schema, connections, backend
+  status) as the editor panel.
+- Connection selection (`verbis.selectConnection`, `verbis.addConnection`)
+  now syncs the active connection + connection list to both chat hosts.
+
+---
+
+## [1.1.4] — 2026-08-19
+
+### Fixed — Chat input invisible + connection form not saving
+
+**Bug 1 (chat input):** The chat tab's message list and input row shared a
+scrolling flex container without `min-h-0`, so the flex item refused to
+shrink below its content height and the query text box was pushed out of
+view — the chat panel opened with no visible place to type.
+
+**Fix:** The chat tab now uses a dedicated non-scrolling flex column
+(`min-h-0` on the messages area, `shrink-0` on the input row), and the
+textarea / select / button carry explicit VS Code theme colors
+(`--vscode-input-background`, `--vscode-button-background`, etc.) so they
+render correctly regardless of Tailwind utility generation.
+
+**Bug 2 (connection form):** The Connections tab form posted
+`CONNECTION_FORM_SAVE` / `STORE_DB_PASSWORD` webview messages that had no
+handler in `VerbisPanel` — saving a connection from the webview silently
+did nothing.
+
+**Fix:** `VerbisPanel` now handles both messages: connections are appended
+to `.qmind/config.json` and passwords are stored in VS Code SecretStorage
+(OS keychain). The new connection is auto-set as active.
+
+### Added — Live connection list in chat
+
+- New `GET_CONNECTIONS` / `CONNECTIONS_UPDATED` webview messages.
+- The chat panel's database selector is now populated with real saved
+  connections (instead of a hardcoded "Default DB") and stays in sync when
+  connections are added via the command palette or the Connections tab.
+
+---
+
+## [1.1.3] — 2026-08-18
+
+### Fixed — Backend startup crashes + blank chat UI + empty sidebar
+
+**Bug 1 (backend failed to start):** `services/llm_service.py` was missing
+the `LLMRouter` class and `LLMResponse` dataclass that 6 modules import
+(`api/dependencies.py`, `sql_generator`, `nosql_generator`,
+`narrative_service`, `plan_explainer`, `federated_service`) — the backend
+died at import time with `ImportError: cannot import name 'LLMRouter'`.
+
+**Bug 2 (backend failed to start, round 2):** `models/requests.py` was
+missing 8 model classes imported by `schema_impact`, `robustness_service`
+and `glossary_service` (`BreakageEntry`, `ImpactResponse`,
+`RobustnessQueryItem`, `PerturbationResult`, `RobustnessReport`,
+`GlossaryTerm`, `JoinPath`, `GlossaryStore`).
+
+**Bug 3 (blank chat panel):** `VerbisPanel` loaded
+`webview/dist/assets/main.js` + `main.css`, but Vite emits `index.js` +
+`index.css` — the script 404'd and React never mounted.
+
+**Bug 4 (empty sidebar):** `package.json` declares `verbis.connections` /
+`verbis.schema` / `verbis.history` views but no tree providers were
+registered.
+
+**Fix:**
+- Added `LLMRouter` + `LLMResponse` to `llm_service.py` (never raises;
+  errors land in `LLMResponse.error`; falls back Gemini → Groq → Ollama).
+- Added the 8 missing Pydantic models to `models/requests.py`.
+- `VerbisPanel.getHtml()` now loads the correct Vite asset filenames.
+- New `src/views/SidebarProviders.ts` with `ConnectionsProvider`,
+  `SchemaTreeProvider`, `HistoryProvider`, registered in `extension.ts`
+  and refreshed when the backend becomes ready.
+
+---
+
+## [1.1.2] — 2026-08-18
+
+### Chore
+
+- Republished the v1.1.1 packaging fix to the VS Code Marketplace
+  (no code changes beyond version bump).
+
+---
+
+## [1.1.1] — 2026-08-17
+
+### Fixed — Backend install failure on packaged extension
+
+**Bug:** `uv failed (exit 2): error: File not found:
+.python_backend/requirements.txt` — the extension's `.vscodeignore` was
+excluding `python_backend/**` entirely, so when Verbis was installed from the
+.vsix, none of the Python source files (`main.py`, `services/*.py`,
+`api/routes/*.py`, `requirements.txt`) were present in the extension folder.
+The `BackendInstaller` then failed because `requirements.txt` was missing.
+
+**Fix:**
+- Updated `.vscodeignore` to keep all `python_backend/` source files (they are
+  required for the backend subprocess to run). Only exclude bulky/transient
+  artifacts: `__pycache__/`, `venv/`, `.pytest_cache/`, `.mypy_cache/`,
+  `.ruff_cache/`.
+- Added a pre-flight guard in `BackendInstaller.install()` that throws a clear,
+  actionable error if `requirements.txt` is missing — instead of letting
+  `uv` fail with a cryptic "File not found" message. The error message tells
+  the user to reinstall from the Marketplace or report the issue.
+
+---
+
+## [1.1.0] — 2026-08-17
+
+### Added — Three Major Upgrades + 7 Critical Fixes (A-G)
+
+#### Upgrade 1 — Few-Shot LLM Intent Guard with LRU Cache
+- Replaced keyword-based intent classification with few-shot LLM prompting
+- 15+ DATABASE examples and 15+ OFFTOPIC examples at temperature=0
+- Correctly passes "weather data from sensors table" → DATABASE (context override)
+- Correctly blocks "what is the weather today" → OFFTOPIC
+- 200-entry LRU cache keyed on (message, provider) — repeated queries are free
+- Cache stores full (intent, message) tuple — same off-topic query shows same response each time
+- Fails open to DATABASE on any exception — never blocks a valid query
+
+#### Upgrade 2 — Auto-Install Backend Dependencies (uv + globalStorageUri)
+- BackendInstaller class auto-creates Python venv on first activation
+- Venv stored in `context.globalStorageUri` — survives extension updates
+- Uses `uv` for 10x faster installs (falls back to pip if uv unavailable)
+- "Install Now / Later" dialog + progress notification
+- `verbis.installBackend` command for manual re-installation
+- Marker file (`verbis_ready`) skips install on subsequent activations
+- Cross-platform Python path detection (Windows + Linux/Mac)
+- Slim requirements.txt (~120MB, no PyTorch/spaCy/onnxruntime)
+
+#### Upgrade 3 — Text2Schema (NL → Database Schema)
+- New `python_backend/services/schema_creator_service.py` implementing arXiv 2503.23886
+- Structured JSON intermediate format (tables, columns, relationships, indexes)
+- Dialect-aware DDL generation (PostgreSQL / MySQL / SQLite)
+- Foreign keys emitted as TABLE-LEVEL CONSTRAINT clauses (portable across dialects)
+- Mermaid ER diagram auto-generation
+- Iterative refinement ("add a payments table" updates existing schema)
+- New `/api/schema/create` and `/api/schema/refine` routes
+- New `SchemaCreator.tsx` component with 3 stages: input → preview → done
+- "Copy DDL" and "Download as .sql" buttons for user-friendliness
+- "Create DB" tab added to webview
+
+#### Fix A — cachetools added explicitly to requirements.txt
+Verified that neither chromadb 1.5.9 nor openai directly requires cachetools.
+Added `cachetools>=5.0.0` explicitly (20KB, eliminates silent crash risk).
+
+#### Fix B — clear_intent_cache wired via /api/intent/cache/clear endpoint
+- New POST endpoint `/api/intent/cache/clear`
+- Called from `verbis.setApiKey` handler after storing new key
+- Called from `verbis.clearApiKey` handler after deleting key
+- Called on `verbis.llm.provider` configuration change (provider switch)
+
+#### Fix C — Schema cache refreshed after SCHEMA_EXECUTE
+- New POST endpoint `/api/schema/refresh` (Fix F)
+- Deletes stale `schema_cache.json` + re-indexes ChromaDB
+- Called after DDL execution so chat knows about new tables
+- Wrapped in try/catch — non-fatal if refresh fails
+
+#### Fix D — Full connection-selection flow
+- `verbis.selectConnection` command with quick-pick UI
+- `verbis.addConnection` auto-sets new connection as active
+- `VerbisPanel.setActiveConnection()` + `resolveConnectionId()` helper
+- Falls back to first connection in config.json if no active connection set
+- SCHEMA_EXECUTE uses `resolveConnectionId()` — not hardcoded 'default'
+
+#### Fix E — No floating promises in onDidChangeConfiguration
+- Uses sync callback + explicit `.then(noop, errHandler)`
+- Avoids eslint `no-floating-promises` warning
+- Errors logged to `console.warn` instead of being silently swallowed
+
+#### Fix F — /api/schema/refresh is a POST endpoint
+- Cache invalidation is semantically a mutation
+- POST is more robust than relying on requestJson's implicit GET-with-no-body behavior
+- Takes JSON body `{ db_config_id: string }`
+
+#### Fix G — Uses existing `id` variable in verbis.addConnection
+- The handler already declares `const id = crypto.randomUUID()` (line 178)
+- Used that exact variable name when calling `setActiveConnection(id)`
+- Did not invent a new variable like `connectionId` or `newId`
+
+### Changed
+- Bumped version from 1.0.2 to 1.1.0
+- BackendManager constructor now takes `pythonExe` as 4th parameter (from BackendInstaller)
+- Removed `getPythonPath()` helper from BackendManager.ts (venv managed by BackendInstaller)
+- Removed `fs` import from BackendManager.ts (no longer needed)
+- `verbis.openQueryTree` command renamed to `verbis.openTree` (per spec)
+
+### New Commands
+- `Verbis: Install / Reinstall Backend` — Manually trigger backend setup
+- `Verbis: Select Database Connection` — Quick-pick UI for switching connections
+
+### New Endpoints
+- `POST /api/intent/cache/clear` — Clear intent classification cache
+- `POST /api/schema/create` — Generate schema from NL description
+- `POST /api/schema/refine` — Apply NL refinement to existing schema
+- `POST /api/schema/refresh` — Force-refresh schema cache + ChromaDB index
+
+### New Files
+- `src/services/BackendInstaller.ts` — Auto-installer class
+- `python_backend/services/schema_creator_service.py` — Text2Schema service
+- `python_backend/api/routes/schema_create.py` — Schema creation routes
+- `python_backend/requirements-optional.txt` — Heavy optional deps (PyTorch, spaCy)
+- `webview/src/components/SchemaCreator.tsx` — Schema creation UI
+
+---
+
+## [1.0.0] — 2026-08-16
+
+### Added
+- Natural language to SQL and NoSQL query generation (Gemini 2.5 Flash)
+- Privacy Shield: schema anonymization before cloud LLM calls
+- Adaptive User Preference Memory across sessions
+- Query Genealogy with interactive visual branching (ReactFlow DAG)
+- Collaborative annotations on SQL lines and result cells
+- Schema Change Impact Predictor with auto-rewrite
+- Dynamic PII masking in query results (GDPR/CCPA/HIPAA)
+- Business Glossary with deterministic semantic routing
+- Schema Evolution Robustness Testing Suite
+- Execution Plan plain-English explainer
+- Analytical Narrative Engine (data storytelling from results)
+- Performance Regression Detector across sessions
+- Federated SQL + NoSQL querying (PostgreSQL + MongoDB)
+- Project-scoped persistent workspaces (.qmind/)
+- Secure API key storage via VS Code SecretStorage (OS keychain)
+- Support for PostgreSQL, MySQL, SQLite, SQL Server, MongoDB
+- Local LLM mode via Ollama (fully offline)

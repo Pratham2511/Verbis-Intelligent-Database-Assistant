@@ -144,10 +144,7 @@ export class SchemaTreeProvider implements vscode.TreeDataProvider<vscode.TreeIt
   /** Active connection id — the explicitly selected one if set, else the most
    * recently added connection (mirrors AssistantSession). */
   private async activeConnectionId(): Promise<string | undefined> {
-    if (this.selectedConnectionId) return this.selectedConnectionId;
-    if (!this.workspace) return undefined;
-    const cfg = await this.workspace.readConfig();
-    return cfg.connections[cfg.connections.length - 1]?.id;
+    return this.workspace ? this.workspace.getActiveConnectionId() : this.selectedConnectionId;
   }
 
   async getChildren(element?: vscode.TreeItem): Promise<vscode.TreeItem[]> {
@@ -255,7 +252,7 @@ export class HistoryProvider implements vscode.TreeDataProvider<vscode.TreeItem>
       item.command = {
         command: 'verbis.recallQuery',
         title: 'Recall Query',
-        arguments: [h.sql],
+        arguments: [h.sql, h.connectionId,h.parameters,h.schemaFingerprint],
       };
       return item;
     });

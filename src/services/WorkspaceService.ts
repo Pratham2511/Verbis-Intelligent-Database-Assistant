@@ -1,3 +1,4 @@
+import * as crypto from 'crypto';
 // ============================================================================
 // WorkspaceService — .qmind/ file I/O wrapper
 // src/services/WorkspaceService.ts
@@ -34,6 +35,9 @@ export interface ConversationTurn {
   timestamp: number;
   /** Generated SQL, when this assistant turn produced any. */
   sql?: string;
+  connectionId?: string;
+  schemaFingerprint?: string;
+  parameters?:Record<string,unknown>;
 }
 
 /** A named, resumable conversation. */
@@ -64,6 +68,40 @@ function makeTitle(seed: string): string {
 
 export class WorkspaceService {
   private qmindPath: string;
+  private static queues = new Map<string, Promise<unknown>>();
+  private serialize<T>(file: string, work: () => Promise<T>): Promise<T> {
+    const key = path.join(this.qmindPath, file);
+    const previous = WorkspaceService.queues.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => {}).then(work);
+    WorkspaceService.queues.set(key, next);
+    void next.finally(() => {
+      if (WorkspaceService.queues.get(key) === next) WorkspaceService.queues.delete(key);
+    }).catch(() => {});
+    return next;
+  }
+  async getActiveConnectionId(): Promise<string | undefined> {
+    const cfg = await this.readConfig();
+    return cfg.connections.find(c => c.id === cfg.activeConnectionId)?.id ?? cfg.connections[0]?.id;
+  }
+  async removeConnection(id:string){
+    await this.serialize('config.json',async()=>{const cfg=await this.readConfig();cfg.connections=cfg.connections.filter(c=>c.id!==id);if(cfg.activeConnectionId===id)cfg.activeConnectionId=cfg.connections[0]?.id;await this.writeConfig(cfg)});WorkspaceService.notifyDataChanged();
+  }
+  async upsertConnection(connection: DBConfig): Promise<void> {
+    await this.serialize('config.json',async()=>{const cfg=await this.readConfig();
+      cfg.connections=cfg.connections.filter(c=>c.id!==connection.id);cfg.connections.push(connection);
+      cfg.activeConnectionId=connection.id;await this.writeConfig(cfg);
+    });WorkspaceService.notifyDataChanged();
+  }
+  async setActiveConnection(id: string | undefined): Promise<void> {
+    await this.serialize('config.json', async () => {
+      const cfg = await this.readConfig();
+      if (id && !cfg.connections.some(c => c.id === id)) throw new Error('Connection no longer exists.');
+      cfg.activeConnectionId = id;
+      await this.writeConfig(cfg);
+    });
+    WorkspaceService.notifyDataChanged();
+  }
+
 
   /**
    * Fired whenever persisted query history or conversations change, so UI
@@ -112,14 +150,15 @@ export class WorkspaceService {
     try {
       const raw = await fs.promises.readFile(fp, 'utf8');
       return JSON.parse(raw) as T;
-    } catch {
-      return fallback;
+    } catch (err) {
+      if((err as NodeJS.ErrnoException).code==='ENOENT')return fallback;
+      throw new Error(`Verbis could not read ${file}: ${(err as Error).message}. Existing data was preserved.`);
     }
   }
 
   private async writeJson<T>(file: string, data: T): Promise<void> {
     const fp = path.join(this.qmindPath, file);
-    const tmp = `${fp}.tmp`;
+    const tmp = `${fp}.${crypto.randomUUID()}.tmp`;
     const content = JSON.stringify(data, null, 2);
     await fs.promises.writeFile(tmp, content, 'utf8');
     await fs.promises.rename(tmp, fp); // atomic on POSIX
@@ -128,6 +167,7 @@ export class WorkspaceService {
   // ─── config.json ───────────────────────────────────────────────────
   async readConfig(): Promise<{
     connections: DBConfig[];
+    activeConnectionId?: string;
     backendPort?: number;
     llm: { mode: string; cloudEndpoint?: string; cloudModel?: string; localModel?: string };
     rowLimit: number;
@@ -149,11 +189,13 @@ export class WorkspaceService {
 
   // ─── schema_cache.json ────────────────────────────────────────────
   async readSchemaCache(): Promise<SchemaInfo[]> {
-    return this.readJson<SchemaInfo[]>('schema_cache.json', []);
+    const id = await this.getActiveConnectionId();
+    return this.readJson<SchemaInfo[]>(`schema-ui-${id ?? 'none'}.json`, []);
   }
 
   async writeSchemaCache(schema: SchemaInfo[]): Promise<void> {
-    await this.writeJson('schema_cache.json', schema);
+    const id = await this.getActiveConnectionId();
+    await this.writeJson(`schema-ui-${id ?? 'none'}.json`, schema);
   }
 
   // ─── memory.json — Adaptive Preference Memory (#1) + Disambiguation (#7)
@@ -183,6 +225,8 @@ export class WorkspaceService {
     rowCount?: number;
     connectionId?: string;
     connectionName?: string;
+    parameters?:Record<string,unknown>;
+    schemaFingerprint?:string;
   }>> {
     return this.readJson('history.json', []);
   }
@@ -197,7 +241,10 @@ export class WorkspaceService {
     rowCount?: number;
     connectionId?: string;
     connectionName?: string;
+    parameters?:Record<string,unknown>;
+    schemaFingerprint?:string;
   }): Promise<void> {
+    return this.serialize('history.json', async () => {
     const history = await this.readHistory();
     history.push(entry);
     // Keep last 5000 entries to avoid unbounded growth
@@ -205,6 +252,7 @@ export class WorkspaceService {
     await this.writeJson('history.json', trimmed);
     // Notify UI (Recent Queries) to refresh immediately.
     WorkspaceService.notifyDataChanged();
+    });
   }
 
   // ─── query_tree.json — Interactive DAG (#14) ───────────────────────
@@ -244,11 +292,13 @@ export class WorkspaceService {
   }
 
   async appendPerfLog(entry: PerfLogEntry): Promise<void> {
+    return this.serialize('perf_log.json', async () => {
     const log = await this.readPerfLog();
     log.push(entry);
     // Keep last 10000 entries
     const trimmed = log.slice(-10000);
     await this.writeJson('perf_log.json', trimmed);
+    });
   }
 
   // ─── pii_rules.json — Configurable masking rules (#13) ─────────────
@@ -363,6 +413,7 @@ export class WorkspaceService {
     turns: ConversationTurn[],
     opts: { title?: string; connectionId?: string } = {},
   ): Promise<void> {
+    return this.serialize('sessions.json', async () => {
     const store = await this.readConversations();
     const now = Date.now();
     let conv = store.sessions.find(s => s.id === id);
@@ -379,7 +430,8 @@ export class WorkspaceService {
     }
     if (opts.title) conv.title = opts.title;
     if (opts.connectionId) conv.connectionId = opts.connectionId;
-    conv.turns = turns.slice(-MAX_TURNS);
+    const merged = new Map([...conv.turns, ...turns].map(t => [`${t.timestamp}:${t.role}:${t.content}`, t]));
+    conv.turns = [...merged.values()].sort((a,b) => a.timestamp-b.timestamp).slice(-MAX_TURNS);
     conv.updatedAt = now;
     store.activeSessionId = id;
     // Bound the number of retained conversations (drop oldest).
@@ -388,6 +440,7 @@ export class WorkspaceService {
     }
     await this.writeConversations(store);
     WorkspaceService.notifyDataChanged();
+    });
   }
 
   /** The active conversation, or undefined when none exists. */
@@ -404,9 +457,11 @@ export class WorkspaceService {
 
   /** Set the active conversation pointer (no turn changes). */
   async setActiveConversation(id: string | null): Promise<void> {
+    return this.serialize('sessions.json', async () => {
     const store = await this.readConversations();
     store.activeSessionId = id;
     await this.writeConversations(store);
+    });
   }
 
   /** Workspace root on disk (parent of .qmind/). */

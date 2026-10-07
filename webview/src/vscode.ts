@@ -1,7 +1,7 @@
 // ============================================================================
 // vscode.ts — acquireVsCodeApi wrapper + typed postMessage helpers
 // ============================================================================
-import type { WebviewMessage, WebviewMessageType } from '../../../src/types';
+import type { WebviewMessage, WebviewMessageType } from '../../src/types';
 
 declare global {
   interface Window {
@@ -59,9 +59,25 @@ export function useVsCode(): VsCodeApi {
   }
   // Mock for browser dev — mirrors the real shape so components compile.
   const mock: VsCodeApi = {
-    getState: () => ({}),
+    getState: <T,>() => ({} as T),
     setState: () => {},
     postMessage: (msg) => console.log('[mock postMessage]', msg),
   };
   return mock;
+}
+
+export function request(type: WebviewMessageType,payload:unknown):Promise<any> {
+  const id=genRequestId();
+  return new Promise((resolve,reject)=>{
+    // Credential, file and confirmation dialogs wait for the user. The host
+    // starts its bounded HTTP timeout after that choice; a second webview
+    // clock must not expire the first question while the key prompt is open.
+    const hostOwnsDeadline=['GENERATE_SQL','SCHEMA_CREATE','SCHEMA_REFINE','SCHEMA_EXECUTE','PICK_CSV','EXPORT_FILE','DELETE_CONNECTION','STORE_API_KEY','CONNECTION_FORM_SAVE'].includes(type);
+    let timer:ReturnType<typeof setTimeout>|undefined;
+    const off=onMessage(msg=>{if(msg.requestId!==id)return;if(timer)clearTimeout(timer);off();
+      if(msg.type==='ERROR')reject(new Error((msg.payload as {message:string}).message));else resolve(msg.payload);
+    });
+    if(!hostOwnsDeadline)timer=setTimeout(()=>{off();if(type==='EXECUTE_SQL')postMessage('CANCEL_REQUEST',{});reject(new Error('Request timed out. Retry after checking the backend.'));},type==='EXECUTE_SQL'?610000:95000);
+    postMessage(type,payload,id);
+  });
 }

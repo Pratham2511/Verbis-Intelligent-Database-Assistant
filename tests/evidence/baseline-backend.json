@@ -1,0 +1,50 @@
+{
+  "F01-select-into": true,
+  "F01-cte": true,
+  "F01-explain": true,
+  "F26-union": false,
+  "F19-total": [
+    [
+      "value"
+    ],
+    [
+      {
+        "value": "XXX-XXX-XXXX"
+      }
+    ]
+  ],
+  "F19-dept": [
+    [
+      "value"
+    ],
+    [
+      {
+        "value": "J*** D***"
+      }
+    ]
+  ],
+  "F19-late": [
+    [],
+    [
+      {
+        "value": "safe"
+      },
+      {
+        "value": "safe"
+      },
+      {
+        "value": "safe"
+      },
+      {
+        "value": "safe"
+      },
+      {
+        "value": "safe"
+      },
+      {
+        "value": "person@example.com"
+      }
+    ]
+  ],
+  "F28": -1
+}

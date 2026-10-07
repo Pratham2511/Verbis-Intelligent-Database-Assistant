@@ -37,3 +37,11 @@ tsconfig.eslint.json
 !CHANGELOG.md
 .github/**
 .qmind/**
+
+.local-test/**
+tests/**
+docs/**
+python_backend/tests/**
+.pytest_cache/**
+webview/package-lock.json
+python_backend/requirements-dev.txt

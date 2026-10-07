@@ -1,0 +1,21 @@
+
+> verbis-db-assistant@1.5.0 test
+> vitest run --pool=forks --maxWorkers=2 --minWorkers=1
+
+
+ RUN  v1.6.1 <repository>
+
+ ✓ tests/lifecycle.test.ts  (3 tests) 35ms
+ ✓ tests/assistant.test.ts  (21 tests) 271ms
+ ✓ tests/schema-application.test.ts  (4 tests) 19ms
+ ✓ tests/connections.test.ts  (4 tests) 16ms
+ ✓ tests/safety.test.ts  (4 tests) 74ms
+ ✓ tests/terminal.test.ts  (4 tests) 17ms
+ ✓ tests/webview-request.test.ts  (2 tests) 37ms
+ ✓ tests/provider-secrets.test.ts  (2 tests) 10ms
+ ✓ tests/analysis-export.test.ts  (2 tests) 7ms
+
+ Test Files  9 passed (9)
+      Tests  46 passed (46)
+   Start at  01:19:49
+   Duration  4.25s (transform 624ms, setup 1ms, collect 948ms, tests 486ms, environment 4ms, prepare 1.35s)

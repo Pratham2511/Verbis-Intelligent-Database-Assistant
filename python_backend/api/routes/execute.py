@@ -13,6 +13,8 @@ Enforces:
 from __future__ import annotations
 
 import time
+import threading
+import asyncio
 from typing import Any, Dict, List
 
 from fastapi import APIRouter, Request, HTTPException
@@ -74,14 +76,32 @@ async def execute(req: ExecuteRequest, request: Request) -> Dict[str, Any]:
         else state.settings.execution_timeout_seconds
     )
 
-    svc = ExecutionService(pool, timeout_seconds=timeout, row_limit=row_limit)
+    cancel = threading.Event()
+    jobs = state.extra.setdefault('executions', {})
+    if req.request_id and req.request_id in jobs:
+        raise HTTPException(409, detail='An execution with this request id is already running.')
+    if req.request_id: jobs[req.request_id] = cancel
+    svc = ExecutionService(pool, timeout_seconds=timeout, row_limit=row_limit,
+                           read_only=effective_read_only, cancel_event=cancel)
+    async def watch_disconnect():
+        while True:
+            if await request.is_disconnected():
+                cancel.set()
+                return
+            await asyncio.sleep(0.1)
+    watcher = asyncio.create_task(watch_disconnect())
     try:
-        result = await svc.execute(req.sql)
+        result = await svc.execute(req.sql, req.parameters)
     except TimeoutError:
+        if cancel.is_set():raise HTTPException(499,detail='Query cancellation acknowledged.')
         raise HTTPException(504, detail='Query timed out. Consider adding a LIMIT or WHERE clause.')
     except Exception as exc:
-        logger.error(f'Execution error: {exc}')
+        logger.error('Execution failed ({})', type(exc).__name__)
         raise HTTPException(500, detail=f'Execution failed: {exc}')
+
+    finally:
+        watcher.cancel()
+        if req.request_id: jobs.pop(req.request_id, None)
 
     # ─── PII Masking (Novel #13) ────────────────────────────────────────
     masked_columns, masked_rows, audit_lines = state.pii_masker.mask_results(
@@ -97,7 +117,7 @@ async def execute(req: ExecuteRequest, request: Request) -> Dict[str, Any]:
         result['piiColumnsMasked'] = masked_columns
 
     # ─── Performance Regression Detection (Novel #11) ───────────────────
-    fingerprint = _fingerprint(req.sql)
+    fingerprint = _fingerprint(req.connection_id+'\n'+req.sql)
     regression_alert = state.perf_tracker.record(
         fingerprint=fingerprint,
         execution_time_ms=result['executionTimeMs'],
@@ -106,24 +126,8 @@ async def execute(req: ExecuteRequest, request: Request) -> Dict[str, Any]:
     if regression_alert:
         result['regressionAlert'] = regression_alert
 
-    # ─── Plan Explainer (Novel #6) — best-effort ────────────────────────
-    try:
-        explain = await svc.explain(req.sql)
-        if explain:
-            explainer = PlanExplainer(state.llm)
-            result['planExplanation'] = await explainer.explain(explain)
-    except Exception as exc:
-        logger.warning(f'Plan explainer skipped: {exc}')
-
-    # ─── Analytical Narrative (Novel #12) — best-effort ──────────────────
-    try:
-        narrative_engine = NarrativeEngine(state.llm)
-        result['narrative'] = await narrative_engine.summarize(
-            columns=result['columns'],
-            rows=result['rows'][:100],
-        )
-    except Exception as exc:
-        logger.warning(f'Narrative engine skipped: {exc}')
+    # Numerical summaries come from measured results, without a hidden LLM call.
+    result['narrative'] = f"{result['rowCount']} rows returned" + (' (limited).' if result['truncated'] else '.')
 
     # ─── Update Query Tree node status ─────────────────────────────────
     state.history_store.update_query_tree_node_status(
@@ -131,8 +135,12 @@ async def execute(req: ExecuteRequest, request: Request) -> Dict[str, Any]:
         status='success' if not regression_alert else 'warning',
         execution_time_ms=result['executionTimeMs'],
         row_count=result['rowCount'],
+        connection_id=req.connection_id,
     )
 
+    from services.analysis_service import chart_suggestion
+    result['chart']=chart_suggestion(req.sql,result['columns'],result['rows'])
+    state.extra['last_result']={'sql':req.sql,'connectionId':req.connection_id,'parameters':req.parameters,'result':result}
     return result
 
 
@@ -140,3 +148,9 @@ def _fingerprint(sql: str) -> str:
     """Normalize SQL and hash it for the regression baseline."""
     normalized = ' '.join(sql.lower().split())
     return hashlib.sha256(normalized.encode()).hexdigest()[:16]
+
+@router.post('/execute/cancel/{request_id}')
+async def cancel_execution(request_id: str, request: Request):
+    event = request.app.state.qm.extra.setdefault('executions', {}).get(request_id)
+    if event: event.set()
+    return {'cancelRequested': event is not None}

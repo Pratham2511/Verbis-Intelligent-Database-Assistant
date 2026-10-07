@@ -88,3 +88,21 @@ body {
 .tree-node.failed   { border-color: #f14c4c; }
 .tree-node.warning  { border-color: #d4a017; }
 .tree-node.unexecuted { opacity: 0.7; }
+
+.workspace-section {padding:20px; max-width:1400px;}
+.workspace-section h2 {font-size:18px; margin:0 0 12px;}
+.workspace-section h3 {font-size:15px; margin:24px 0 10px;}
+.workspace-section p {margin:10px 0; line-height:1.5;}
+.workspace-section label {display:block; margin:8px 0;}
+.workspace-section input:not([type=checkbox]), .workspace-section select, .workspace-section textarea {background:var(--vscode-input-background); color:var(--vscode-input-foreground); border:1px solid var(--vscode-input-border,var(--vscode-panel-border)); padding:6px; border-radius:2px;}
+.workspace-section textarea {display:block;width:100%;resize:vertical;}
+.workspace-section button {padding:6px 10px; border:1px solid var(--vscode-button-border,var(--vscode-panel-border)); color:var(--vscode-button-foreground); background:var(--vscode-button-background); border-radius:2px; cursor:pointer;}
+.workspace-section button:disabled {opacity:.45;cursor:default;}
+.workspace-section [role=alert] {color:var(--vscode-errorForeground);}
+.workspace-actions {display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0;}
+.grid-scroll {overflow:auto;max-height:500px; margin:12px 0;}
+.sql-editor {font-family:var(--vscode-editor-font-family,monospace);}
+.workspace-section pre {white-space:pre-wrap;overflow-wrap:anywhere;}
+.measured-bar {display:grid;grid-template-columns:160px minmax(100px,400px) 100px;gap:12px;align-items:center;margin:6px 0;}
+.measured-bar meter {width:100%;}
+nav {flex-wrap:wrap;}

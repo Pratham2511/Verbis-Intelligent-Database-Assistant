@@ -12,6 +12,7 @@
 import * as vscode from 'vscode';
 export declare class BackendInstaller {
     private readonly context;
+    private installing?;
     constructor(context: vscode.ExtensionContext);
     private get storageDir();
     private get venvDir();

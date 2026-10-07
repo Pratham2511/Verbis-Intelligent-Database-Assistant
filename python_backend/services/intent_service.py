@@ -58,12 +58,12 @@ _intent_cache: LRUCache = LRUCache(maxsize=200)
 # Strong database signals — presence of any of these means DATABASE.
 _DB_SIGNALS = re.compile(
     r"\b("
-    r"select|insert|update|delete|from|where|join|group\s+by|order\s+by|limit|"
+    r"select|insert|update|delete|where|join|group\s+by|order\s+by|limit|"
     r"table|tables|column|columns|schema|database|index|indexes|"
     r"query|sql|primary\s+key|foreign\s+key|constraint|view|"
     r"count|sum|avg|min|max|distinct|"
     r"create\s+table|alter\s+table|drop\s+table|"
-    r"show\s+me|list|find|how\s+many|top\s+\d+|"
+    r"how\s+many|top\s+\d+|"
     r"customers|orders|users|products|employees|transactions|revenue|sales"
     r")\b",
     re.IGNORECASE,
@@ -75,9 +75,9 @@ _DB_SIGNALS = re.compile(
 # contains a _DB_SIGNAL, which we check FIRST).
 _OFFTOPIC_SIGNALS = re.compile(
     r"\b("
-    r"tell\s+me\s+a\s+joke|joke|"
+    r"tell\s+me\s+a\s+joke|jokes?|"
     r"write\s+(me\s+)?a\s+(poem|song|story|cover\s+letter|essay)|poem|"
-    r"recipe|how\s+do\s+i\s+cook|"
+    r"recipes?|how\s+do\s+i\s+cook|"
     r"capital\s+of|president|prime\s+minister|"
     r"weather\s+(today|tomorrow|forecast)|"
     r"who\s+won|stock\s+price|"
@@ -195,30 +195,8 @@ def _get_client(
     `model` is the user-configured override forwarded from the extension;
     when blank the provider's current default is used.
     """
-    if provider == "gemini":
-        return (
-            AsyncOpenAI(
-                api_key=api_key,
-                base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
-            ),
-            (model or DEFAULT_GEMINI_MODEL),
-        )
-    elif provider == "groq":
-        return (
-            AsyncOpenAI(
-                api_key=api_key,
-                base_url="https://api.groq.com/openai/v1",
-            ),
-            (model or DEFAULT_GROQ_MODEL),
-        )
-    else:  # local / ollama
-        return (
-            AsyncOpenAI(
-                api_key="not-needed",
-                base_url="http://localhost:11434/v1",
-            ),
-            (model or DEFAULT_LOCAL_MODEL),
-        )
+    from services.llm_service import _get_client as shared_client
+    return shared_client(provider, api_key, model)
 
 
 # ── Public API ─────────────────────────────────────────────────────────

@@ -7,30 +7,22 @@ Pipeline:
     2. send anonymized prompt   → LLM
     3. deanonymize_sql(sql, map) → real SQL with original names
 
-The token map is persisted as AES-256-GCM encrypted .qmind/priv_map.enc.
-The encryption key is derived from a workspace-unique salt stored in VS Code
-SecretStorage (passed via env var QM_PRIVMAP_SALT on backend startup).
+Token maps remain in memory for one request and are discarded after completion.
+Schema defaults and dataset rows are not included in outbound context.
 """
 
 from __future__ import annotations
 
-import base64
-import hashlib
-import json
-import os
 import re
 import uuid
 from pathlib import Path
 from typing import Dict, List, Tuple
 
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 from loguru import logger
 
 
 class PrivacyShield:
     def __init__(self, salt_path: Path) -> None:
-        self._salt_path = salt_path
-        self._salt = os.environ.get('QM_PRIVMAP_SALT', 'fallback-dev-salt-change-me')
         self._active_maps: Dict[str, Dict[str, str]] = {}  # session_id → map
 
     # ─── Public API ────────────────────────────────────────────────────
@@ -38,32 +30,40 @@ class PrivacyShield:
         """Replace table/column names with anonymous tokens.
 
         Returns (anonymized_schema, session_id). The token map for session_id
-        is held in memory and encrypted-at-rest when persisted.
+        is held in memory until the caller discards it.
         """
         session_id = str(uuid.uuid4())
         forward_map: Dict[str, str] = {}     # real → token
         reverse_map: Dict[str, str] = {}     # token → real
 
-        anon_schema: List[Dict] = []
-        for t_idx, table in enumerate(schema):
-            t_token = f'table_{chr(65 + t_idx)}'  # table_A, table_B, …
-            forward_map[table['tableName']] = t_token
-            reverse_map[t_token] = table['tableName']
-
-            anon_table = {**table, 'tableName': t_token, 'columns': []}
-            for c_idx, col in enumerate(table.get('columns', [])):
-                c_token = f'col_{c_idx + 1}'
-                forward_map[f"{table['tableName']}.{col['name']}"] = c_token
-                reverse_map[c_token] = col['name']
-                anon_table['columns'].append({**col, 'name': c_token})
-            anon_schema.append(anon_table)
+        # Column tokens are unique across names, shared only for the same name.
+        # The old per-table col_1 map overwrote unrelated columns in joins.
+        names = sorted({c['name'] for t in schema for c in t.get('columns', [])})
+        col_tokens = {n: f'col_{i+1}' for i, n in enumerate(names)}
+        table_tokens = {t['tableName']: f'table_{i+1}' for i, t in enumerate(schema)}
+        forward_map.update(table_tokens)
+        forward_map.update(col_tokens)
+        reverse_map.update({v: k for k, v in forward_map.items()})
+        anon_schema = []
+        for table in schema:
+            anon_schema.append({
+                'tableName': table_tokens[table['tableName']],
+                'columns': [{**c, 'name': col_tokens[c['name']], 'defaultValue': None,
+                             'semanticHint': self.semantic_hint(c['name'])}
+                            for c in table.get('columns', [])],
+                'primaryKey': [col_tokens[c] for c in table.get('primaryKey', [])],
+                'foreignKeys': [{'column': col_tokens[f['column']],
+                    'referencedTable': table_tokens.get(f['referencedTable'], 'unresolved'),
+                    'referencedColumn': col_tokens.get(f['referencedColumn'], 'unresolved')}
+                    for f in table.get('foreignKeys', [])],
+            })
 
         full_map = {'forward': forward_map, 'reverse': reverse_map}
         self._active_maps[session_id] = full_map
-        self._persist(session_id, full_map)
+        # Active generation maps are request-scoped and never persisted.
         return anon_schema, session_id
 
-    def deanonymize_sql(self, sql: str, session_id: str) -> str:
+    def deanonymize_sql(self, sql: str, session_id: str, dialect=None) -> str:
         """Replace anonymous tokens in the generated SQL with real names."""
         full_map = self._active_maps.get(session_id, {})
         reverse = full_map.get('reverse', {})
@@ -71,44 +71,36 @@ class PrivacyShield:
             logger.warning(f'No active token map for session {session_id}; returning SQL as-is.')
             return sql
 
-        # Replace longest tokens first to avoid partial collisions
-        for token in sorted(reverse.keys(), key=len, reverse=True):
-            sql = sql.replace(token, reverse[token])
-        return sql
+        import sqlglot
+        from sqlglot import exp
+        ast = sqlglot.parse_one(sql,read=dialect)
+        for identifier in ast.find_all(exp.Identifier):
+            real = reverse.get(identifier.name.lower())
+            if real:
+                identifier.set('this', real)
+                identifier.set('quoted', True)
+        ast=ast.transform(lambda node: exp.Var(this=':'+node.name) if isinstance(node,exp.Placeholder) and node.name else node)
+        return ast.sql(dialect=dialect)
 
-    # ─── AES-256-GCM persistence ────────────────────────────────────────
-    def _persist(self, session_id: str, full_map: Dict) -> None:
-        try:
-            key = hashlib.sha256(self._salt.encode()).digest()  # 32 bytes
-            aes = AESGCM(key)
-            nonce = os.urandom(12)
-            plaintext = json.dumps({session_id: full_map}).encode()
-            ciphertext = aes.encrypt(nonce, plaintext, None)
-            blob = base64.b64encode(nonce + ciphertext)
-            with open(self._salt_path, 'ab') as f:
-                f.write(blob + b'\n')
-        except Exception as exc:
-            logger.warning(f'Could not persist privacy map: {exc}')
+    def anonymize_text(self, text: str, session_id: str) -> str:
+        forward = self._active_maps[session_id]['forward']
+        for real in sorted(forward, key=len, reverse=True):
+            text = re.sub(r'(?<!\w)' + re.escape(real) + r'(?!\w)', forward[real], text, flags=re.I)
+        return text
 
-    def load_all(self) -> Dict[str, Dict]:
-        """Load all persisted token maps (used on backend restart)."""
-        if not self._salt_path.exists():
-            return {}
-        try:
-            key = hashlib.sha256(self._salt.encode()).digest()
-            aes = AESGCM(key)
-            maps: Dict[str, Dict] = {}
-            with open(self._salt_path, 'rb') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    raw = base64.b64decode(line)
-                    nonce, ciphertext = raw[:12], raw[12:]
-                    plaintext = aes.decrypt(nonce, ciphertext, None)
-                    data = json.loads(plaintext)
-                    maps.update(data)
-            return maps
-        except Exception as exc:
-            logger.warning(f'Could not load privacy maps: {exc}')
-            return {}
+    @staticmethod
+    def semantic_hint(name: str) -> str:
+        """Coarse conventional roles, never source identifiers or sampled values."""
+        normalized=name.lower()
+        if normalized in {'department','department_name','dept','team','team_name'}:return 'organizational unit'
+        if normalized in {'name','full_name','display_name','employee_name'}:return 'entity label'
+        if normalized=='id' or normalized.endswith('_id'):return 'entity identifier'
+        if normalized in {'salary','monthly_salary','annual_salary','gross_salary','base_salary'}:return 'compensation amount; units must come from reviewed metadata'
+        return ''
+
+    def deanonymize_text(self, text: str, session_id: str) -> str:
+        reverse=self._active_maps.get(session_id,{}).get('reverse',{})
+        return re.sub(r'\b(?:table|col)_\d+\b',lambda match:reverse.get(match.group().lower(),match.group()),text,flags=re.I)
+
+    def discard(self, session_id: str):
+        self._active_maps.pop(session_id, None)

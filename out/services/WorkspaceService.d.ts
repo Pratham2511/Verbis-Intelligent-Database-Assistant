@@ -7,6 +7,9 @@ export interface ConversationTurn {
     timestamp: number;
     /** Generated SQL, when this assistant turn produced any. */
     sql?: string;
+    connectionId?: string;
+    schemaFingerprint?: string;
+    parameters?: Record<string, unknown>;
 }
 /** A named, resumable conversation. */
 export interface Conversation {
@@ -30,6 +33,12 @@ export declare class WorkspaceService {
     /** Extension's python_backend dir — used to detect legacy SQLite files. */
     private readonly extensionBackendDir?;
     private qmindPath;
+    private static queues;
+    private serialize;
+    getActiveConnectionId(): Promise<string | undefined>;
+    removeConnection(id: string): Promise<void>;
+    upsertConnection(connection: DBConfig): Promise<void>;
+    setActiveConnection(id: string | undefined): Promise<void>;
     /**
      * Fired whenever persisted query history or conversations change, so UI
      * providers (Recent Queries, etc.) can refresh immediately without a reload.
@@ -47,6 +56,7 @@ export declare class WorkspaceService {
     private writeJson;
     readConfig(): Promise<{
         connections: DBConfig[];
+        activeConnectionId?: string;
         backendPort?: number;
         llm: {
             mode: string;
@@ -73,6 +83,8 @@ export declare class WorkspaceService {
         rowCount?: number;
         connectionId?: string;
         connectionName?: string;
+        parameters?: Record<string, unknown>;
+        schemaFingerprint?: string;
     }>>;
     appendHistory(entry: {
         id: string;
@@ -84,6 +96,8 @@ export declare class WorkspaceService {
         rowCount?: number;
         connectionId?: string;
         connectionName?: string;
+        parameters?: Record<string, unknown>;
+        schemaFingerprint?: string;
     }): Promise<void>;
     readQueryTree(): Promise<QueryTree>;
     writeQueryTree(tree: QueryTree): Promise<void>;

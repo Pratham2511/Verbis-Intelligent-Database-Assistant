@@ -1,0 +1,20 @@
+{
+  "host": "Installed VS Code 1.140.0 on private Xvfb display; packaged Verbis 1.5.0",
+  "provider": "Real Gemini gemini-3.6-flash, session-only key, Privacy Shield enabled",
+  "data": "Synthetic five-row employee fixture, salary metadata explicitly monthly INR",
+  "checks": [
+    "First question resumes once after key input; employee salary >8000 excludes equality and NULL, returns Cara/Dev",
+    "Privacy-enabled real Gemini follow-up identifies department, preserves threshold and returns Dev only",
+    "Real clarification clears pending SQL; /run refuses stale query"
+  ],
+  "earlierFindings": [
+    "Earlier visible-window provider 502 retained separately",
+    "Earlier anonymous-column follow-up clarification exposed missing semantic roles; repaired and retested here"
+  ],
+  "firstGeneration": "verbis › Find employees whose monthly INR salary is above 8000. Show id, nam\nverbis › Find employees whose monthly INR salary is above 8000. Show id, nam\nverbis › Find employees whose monthly INR salary is above 8000. Show id, nam\ne, salary and department.\n✓ SQL generated\n── SQL ────────────────────────────────\n  SELECT \"id\", \"name\", \"salary\", \"department\" FROM \"employees\" WHERE \"salary\n\" > :threshold LIMIT 100\n────────────────────────────────────────\n \nSchema validation passed. /run target: Final synthetic datasets (datasets).\nType /run to execute, or keep chatting.\n \nverbis › ",
+  "firstResult": " \nverbis › /run\nExecuting…\n✓ 2 row(s) in 2 ms\n┌────┬──────┬────────┬────────────┐\n│ id │ name │ salary │ department │\n├────┼──────┼────────┼────────────┤\n│ 3  │ Cara │ 8001   │ Finance    │\n│ 4  │ Dev  │ 12000  │ IT         │\n└────┴──────┴────────┴────────────┘\n \nverbis › \n \n ",
+  "followupGeneration": " \nverbis › Only IT from those employees, sorted by salary descending.\n✓ SQL generated\n── SQL ────────────────────────────────\n  SELECT \"id\", \"name\", \"salary\", \"department\" FROM \"employees\" WHERE \"salary\n\" > :threshold AND \"department\" = :dept ORDER BY \"salary\" DESC LIMIT :LIMIT\n────────────────────────────────────────\n \nSchema validation passed. /run target: Final synthetic datasets (datasets).\nType /run to execute, or keep chatting.\n \nverbis › \n \n ",
+  "followupResult": " \nverbis › /run\nExecuting…\n✓ 1 row(s) in 2 ms\n┌────┬──────┬────────┬────────────┐\n│ id │ name │ salary │ department │\n├────┼──────┼────────┼────────────┤\n│ 4  │ Dev  │ 12000  │ IT         │\n└────┴──────┴────────┴────────────┘\n \nverbis › \n \n \n ",
+  "clarification": " \nverbis › Who earns a lot? Do not assume an unstated threshold.\nWhat specific threshold or criteria should be used to determine who 'earns a\n lot'?\n \nverbis › \n \n \n \n \n \n \n \n ",
+  "afterClarification": " \nverbis › /run\nNo SQL to run yet — ask a question first.\n \nverbis › \n \n \n \n \n \n \n \n \n "
+}

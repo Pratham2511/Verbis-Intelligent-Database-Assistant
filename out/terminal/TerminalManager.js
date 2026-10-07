@@ -63,12 +63,12 @@ class TerminalManager {
      * When `recallSql` is given (from Recent Queries), it is loaded into the
      * terminal as the pending executable SQL, ready to review and /run.
      */
-    open(recallSql) {
+    open(recallSql, connectionId, parameters, schemaFingerprint) {
         if (this.terminal) {
             // Reveal the existing terminal rather than spawning a duplicate.
             this.terminal.show();
             if (recallSql) {
-                this.pty?.recallSql(recallSql);
+                this.pty?.recallSql(recallSql, connectionId, parameters, schemaFingerprint);
             }
             return;
         }
@@ -89,9 +89,10 @@ class TerminalManager {
         this.terminal.show();
         // Apply any recalled SQL once the terminal is ready.
         if (recallSql) {
-            pty.recallSql(recallSql);
+            pty.recallSql(recallSql, connectionId, parameters, schemaFingerprint);
         }
     }
+    providerChanged() { this.pty?.providerChanged(); }
     disposeTerminal() {
         this.closeSubscription?.dispose();
         this.closeSubscription = null;

@@ -1,12 +1,4 @@
 "use strict";
-// ============================================================================
-// WorkspaceService — .qmind/ file I/O wrapper
-// src/services/WorkspaceService.ts
-//
-// Implements Novel Contribution #8 (Project-Scoped Persistent Workspaces).
-// All .qmind/ files are written atomically (write-tmp + rename) to prevent
-// corruption if VS Code crashes mid-write.
-// ============================================================================
 var __createBinding = (this && this.__createBinding) || (Object.create ? (function(o, m, k, k2) {
     if (k2 === undefined) k2 = k;
     var desc = Object.getOwnPropertyDescriptor(m, k);
@@ -42,6 +34,15 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.WorkspaceService = void 0;
+const crypto = __importStar(require("crypto"));
+// ============================================================================
+// WorkspaceService — .qmind/ file I/O wrapper
+// src/services/WorkspaceService.ts
+//
+// Implements Novel Contribution #8 (Project-Scoped Persistent Workspaces).
+// All .qmind/ files are written atomically (write-tmp + rename) to prevent
+// corruption if VS Code crashes mid-write.
+// ============================================================================
 const fs = __importStar(require("fs"));
 const os = __importStar(require("os"));
 const path = __importStar(require("path"));
@@ -62,6 +63,47 @@ class WorkspaceService {
     workspaceRoot;
     extensionBackendDir;
     qmindPath;
+    static queues = new Map();
+    serialize(file, work) {
+        const key = path.join(this.qmindPath, file);
+        const previous = WorkspaceService.queues.get(key) ?? Promise.resolve();
+        const next = previous.catch(() => { }).then(work);
+        WorkspaceService.queues.set(key, next);
+        void next.finally(() => {
+            if (WorkspaceService.queues.get(key) === next)
+                WorkspaceService.queues.delete(key);
+        }).catch(() => { });
+        return next;
+    }
+    async getActiveConnectionId() {
+        const cfg = await this.readConfig();
+        return cfg.connections.find(c => c.id === cfg.activeConnectionId)?.id ?? cfg.connections[0]?.id;
+    }
+    async removeConnection(id) {
+        await this.serialize('config.json', async () => { const cfg = await this.readConfig(); cfg.connections = cfg.connections.filter(c => c.id !== id); if (cfg.activeConnectionId === id)
+            cfg.activeConnectionId = cfg.connections[0]?.id; await this.writeConfig(cfg); });
+        WorkspaceService.notifyDataChanged();
+    }
+    async upsertConnection(connection) {
+        await this.serialize('config.json', async () => {
+            const cfg = await this.readConfig();
+            cfg.connections = cfg.connections.filter(c => c.id !== connection.id);
+            cfg.connections.push(connection);
+            cfg.activeConnectionId = connection.id;
+            await this.writeConfig(cfg);
+        });
+        WorkspaceService.notifyDataChanged();
+    }
+    async setActiveConnection(id) {
+        await this.serialize('config.json', async () => {
+            const cfg = await this.readConfig();
+            if (id && !cfg.connections.some(c => c.id === id))
+                throw new Error('Connection no longer exists.');
+            cfg.activeConnectionId = id;
+            await this.writeConfig(cfg);
+        });
+        WorkspaceService.notifyDataChanged();
+    }
     /**
      * Fired whenever persisted query history or conversations change, so UI
      * providers (Recent Queries, etc.) can refresh immediately without a reload.
@@ -107,13 +149,15 @@ class WorkspaceService {
             const raw = await fs.promises.readFile(fp, 'utf8');
             return JSON.parse(raw);
         }
-        catch {
-            return fallback;
+        catch (err) {
+            if (err.code === 'ENOENT')
+                return fallback;
+            throw new Error(`Verbis could not read ${file}: ${err.message}. Existing data was preserved.`);
         }
     }
     async writeJson(file, data) {
         const fp = path.join(this.qmindPath, file);
-        const tmp = `${fp}.tmp`;
+        const tmp = `${fp}.${crypto.randomUUID()}.tmp`;
         const content = JSON.stringify(data, null, 2);
         await fs.promises.writeFile(tmp, content, 'utf8');
         await fs.promises.rename(tmp, fp); // atomic on POSIX
@@ -133,10 +177,12 @@ class WorkspaceService {
     }
     // ─── schema_cache.json ────────────────────────────────────────────
     async readSchemaCache() {
-        return this.readJson('schema_cache.json', []);
+        const id = await this.getActiveConnectionId();
+        return this.readJson(`schema-ui-${id ?? 'none'}.json`, []);
     }
     async writeSchemaCache(schema) {
-        await this.writeJson('schema_cache.json', schema);
+        const id = await this.getActiveConnectionId();
+        await this.writeJson(`schema-ui-${id ?? 'none'}.json`, schema);
     }
     // ─── memory.json — Adaptive Preference Memory (#1) + Disambiguation (#7)
     async readMemory() {
@@ -157,13 +203,15 @@ class WorkspaceService {
         return this.readJson('history.json', []);
     }
     async appendHistory(entry) {
-        const history = await this.readHistory();
-        history.push(entry);
-        // Keep last 5000 entries to avoid unbounded growth
-        const trimmed = history.slice(-5000);
-        await this.writeJson('history.json', trimmed);
-        // Notify UI (Recent Queries) to refresh immediately.
-        WorkspaceService.notifyDataChanged();
+        return this.serialize('history.json', async () => {
+            const history = await this.readHistory();
+            history.push(entry);
+            // Keep last 5000 entries to avoid unbounded growth
+            const trimmed = history.slice(-5000);
+            await this.writeJson('history.json', trimmed);
+            // Notify UI (Recent Queries) to refresh immediately.
+            WorkspaceService.notifyDataChanged();
+        });
     }
     // ─── query_tree.json — Interactive DAG (#14) ───────────────────────
     async readQueryTree() {
@@ -195,11 +243,13 @@ class WorkspaceService {
         return this.readJson('perf_log.json', []);
     }
     async appendPerfLog(entry) {
-        const log = await this.readPerfLog();
-        log.push(entry);
-        // Keep last 10000 entries
-        const trimmed = log.slice(-10000);
-        await this.writeJson('perf_log.json', trimmed);
+        return this.serialize('perf_log.json', async () => {
+            const log = await this.readPerfLog();
+            log.push(entry);
+            // Keep last 10000 entries
+            const trimmed = log.slice(-10000);
+            await this.writeJson('perf_log.json', trimmed);
+        });
     }
     // ─── pii_rules.json — Configurable masking rules (#13) ─────────────
     async readPiiRules() {
@@ -299,33 +349,36 @@ class WorkspaceService {
      * first) and each conversation to MAX_TURNS turns.
      */
     async upsertConversation(id, turns, opts = {}) {
-        const store = await this.readConversations();
-        const now = Date.now();
-        let conv = store.sessions.find(s => s.id === id);
-        if (!conv) {
-            conv = {
-                id,
-                title: opts.title ?? makeTitle(turns.find(t => t.role === 'user')?.content ?? 'Conversation'),
-                createdAt: now,
-                updatedAt: now,
-                connectionId: opts.connectionId,
-                turns: [],
-            };
-            store.sessions.push(conv);
-        }
-        if (opts.title)
-            conv.title = opts.title;
-        if (opts.connectionId)
-            conv.connectionId = opts.connectionId;
-        conv.turns = turns.slice(-MAX_TURNS);
-        conv.updatedAt = now;
-        store.activeSessionId = id;
-        // Bound the number of retained conversations (drop oldest).
-        if (store.sessions.length > MAX_SESSIONS) {
-            store.sessions = store.sessions.slice(-MAX_SESSIONS);
-        }
-        await this.writeConversations(store);
-        WorkspaceService.notifyDataChanged();
+        return this.serialize('sessions.json', async () => {
+            const store = await this.readConversations();
+            const now = Date.now();
+            let conv = store.sessions.find(s => s.id === id);
+            if (!conv) {
+                conv = {
+                    id,
+                    title: opts.title ?? makeTitle(turns.find(t => t.role === 'user')?.content ?? 'Conversation'),
+                    createdAt: now,
+                    updatedAt: now,
+                    connectionId: opts.connectionId,
+                    turns: [],
+                };
+                store.sessions.push(conv);
+            }
+            if (opts.title)
+                conv.title = opts.title;
+            if (opts.connectionId)
+                conv.connectionId = opts.connectionId;
+            const merged = new Map([...conv.turns, ...turns].map(t => [`${t.timestamp}:${t.role}:${t.content}`, t]));
+            conv.turns = [...merged.values()].sort((a, b) => a.timestamp - b.timestamp).slice(-MAX_TURNS);
+            conv.updatedAt = now;
+            store.activeSessionId = id;
+            // Bound the number of retained conversations (drop oldest).
+            if (store.sessions.length > MAX_SESSIONS) {
+                store.sessions = store.sessions.slice(-MAX_SESSIONS);
+            }
+            await this.writeConversations(store);
+            WorkspaceService.notifyDataChanged();
+        });
     }
     /** The active conversation, or undefined when none exists. */
     async getActiveConversation() {
@@ -339,9 +392,11 @@ class WorkspaceService {
     }
     /** Set the active conversation pointer (no turn changes). */
     async setActiveConversation(id) {
-        const store = await this.readConversations();
-        store.activeSessionId = id;
-        await this.writeConversations(store);
+        return this.serialize('sessions.json', async () => {
+            const store = await this.readConversations();
+            store.activeSessionId = id;
+            await this.writeConversations(store);
+        });
     }
     /** Workspace root on disk (parent of .qmind/). */
     get workspaceRootPath() {

@@ -31,7 +31,7 @@ async def run_robustness(req: RobustnessRequest, request: Request) -> Dict[str, 
         # RobustnessTester.run_perturbations accesses .id/.sql/.nlInput attributes,
         # so pass the parsed RobustnessQueryItem models directly (not plain dicts).
         report = tester.run_perturbations(list(req.querySet))
-        return report.model_dump()
+        return {**report.model_dump(),'simulation':True,'label':'Static heuristic simulation — no schemas or queries were executed.'}
     except Exception as exc:
         logger.error(f'Robustness test failed: {exc}')
         raise HTTPException(500, detail=f'Robustness test failed: {exc}')

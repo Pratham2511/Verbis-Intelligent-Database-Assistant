@@ -4,6 +4,7 @@ import * as path from 'path';
 
 // Vite config for VS Code webview — CSP-safe (no eval, no inline scripts).
 export default defineConfig({
+  base: './',
   plugins: [react()],
   build: {
     outDir: 'dist',

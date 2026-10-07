@@ -17,7 +17,8 @@ export declare class TerminalManager implements vscode.Disposable {
      * When `recallSql` is given (from Recent Queries), it is loaded into the
      * terminal as the pending executable SQL, ready to review and /run.
      */
-    open(recallSql?: string): void;
+    open(recallSql?: string, connectionId?: string, parameters?: Record<string, unknown>, schemaFingerprint?: string): void;
+    providerChanged(): void;
     private disposeTerminal;
     dispose(): void;
 }

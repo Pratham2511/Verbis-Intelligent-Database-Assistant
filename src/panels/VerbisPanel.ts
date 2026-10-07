@@ -9,6 +9,9 @@
 
 import * as vscode from 'vscode';
 import * as path from 'path';
+import * as fs from 'fs';
+import {saveConnection} from '../services/ConnectionService';
+import {AssistantSession} from '../assistant/AssistantSession';
 import { WebviewMessage, ChatMessage, DBConfig } from '../types';
 import { BackendClient } from '../services/BackendClient';
 import { WorkspaceService } from '../services/WorkspaceService';
@@ -20,6 +23,8 @@ export class VerbisPanel {
 
   private panel: vscode.WebviewPanel;
   private disposables: vscode.Disposable[] = [];
+  private session: AssistantSession;
+  private restored:Promise<number>;
 
   // Fix D — active connection tracking (replaces hardcoded 'default')
   private activeConnectionId: string | null = null;
@@ -28,16 +33,17 @@ export class VerbisPanel {
     context: vscode.ExtensionContext,
     client: BackendClient | null,
     workspace: WorkspaceService,
-    secrets: SecretsService
+    secrets: SecretsService,
+    getClient?: () => BackendClient | null
   ): VerbisPanel {
     if (VerbisPanel.currentPanel) {
-      VerbisPanel.currentPanel.panel.reveal(vscode.ViewColumn.Two);
+      VerbisPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active);
       return VerbisPanel.currentPanel;
     }
     const panel = vscode.window.createWebviewPanel(
       VerbisPanel.viewType,
-      'Verbis — Chat',
-      vscode.ViewColumn.Two,
+      'Verbis — Database Workspace',
+      vscode.ViewColumn.Active,
       {
         enableScripts: true,
         retainContextWhenHidden: true,
@@ -46,18 +52,21 @@ export class VerbisPanel {
         ],
       }
     );
-    VerbisPanel.currentPanel = new VerbisPanel(panel, context, client, workspace, secrets);
+    VerbisPanel.currentPanel = new VerbisPanel(panel, context, client, workspace, secrets, getClient);
     return VerbisPanel.currentPanel;
   }
 
   private constructor(
     panel: vscode.WebviewPanel,
     private readonly context: vscode.ExtensionContext,
-    private readonly client: BackendClient | null,
+    private initialClient: BackendClient | null,
     private readonly workspace: WorkspaceService,
-    private readonly secrets: SecretsService
+    private readonly secrets: SecretsService,
+    private readonly getClient?: () => BackendClient | null
   ) {
     this.panel = panel;
+    this.session=new AssistantSession(()=>this.client,this.secrets,this.workspace);
+    this.restored=this.session.restoreLastSession().catch(e=>{vscode.window.showWarningMessage(`Conversation restore failed: ${e.message}`);return 0});
     this.panel.iconPath = vscode.Uri.file(path.join(context.extensionPath, 'media', 'icon.png'));
     this.panel.webview.html = this.getHtml();
 
@@ -72,6 +81,10 @@ export class VerbisPanel {
     );
 
     this.panel.onDidDispose(() => this.dispose(), undefined, this.disposables);
+    const watcher=vscode.workspace.createFileSystemWatcher('**/*.{py,sql,md}');
+    let changed:ReturnType<typeof setTimeout>|undefined;
+    const notify=()=>{if(changed)clearTimeout(changed);changed=setTimeout(()=>this.postMessage({type:'PROJECT_CHANGED',payload:{}}),500)};
+    this.disposables.push(watcher,watcher.onDidChange(notify),watcher.onDidCreate(notify),watcher.onDidDelete(notify),{dispose:()=>{if(changed)clearTimeout(changed)}});
   }
 
   /**
@@ -87,39 +100,53 @@ export class VerbisPanel {
     if (provider === 'groq') {
       return cfg.get<string>('llm.groqModel', 'llama-3.3-70b-versatile').trim() || undefined;
     }
+    if (provider === 'openrouter') {
+      return cfg.get<string>('llm.openrouterModel', 'thinkingmachines/inkling:free').trim() || undefined;
+    }
     return undefined;
   }
 
+  private get client() { return this.getClient ? this.getClient() : this.initialClient; }
+  private requestedTab = 'connections';
+  private requestedConnection?:DBConfig;
+  public editConnection(connection:DBConfig){this.requestedConnection=connection;this.openTab('connections');this.postMessage({type:'EDIT_CONNECTION',payload:connection});}
+  public providerChanged(){this.session.cancel();this.session.discardSessionKey();}
+  public openTab(tab: string) { this.requestedTab=tab; this.postMessage({type:'OPEN_TAB',payload:{tab}}); }
   // ── Fix D — Connection selection helpers ────────────────────────────
   /** Called by extension.ts when user selects a connection (verbis.selectConnection
    *  command) or after verbis.addConnection creates a new connection. */
   public setActiveConnection(connectionId: string): void {
     this.activeConnectionId = connectionId;
+    void this.pushConnections();
   }
 
   /** Resolve active connection with fallback to first connection in config.json. */
   private async resolveConnectionId(): Promise<string | null> {
-    if (this.activeConnectionId) { return this.activeConnectionId; }
-    const cfg = await this.workspace.readConfig();
-    if (cfg.connections.length > 0) {
-      this.activeConnectionId = cfg.connections[0].id;
-      return this.activeConnectionId;
-    }
-    return null;
+    return (await this.workspace.getActiveConnectionId()) ?? null;
   }
 
   // ─── Message Routing ───────────────────────────────────────────────
   private async onMessage(msg: WebviewMessage): Promise<void> {
     // ─── Handle settings / external-link messages WITHOUT requiring the
     //     Python backend to be ready (these are pure host-side operations).
+    try {
+    if (msg.type === 'PANEL_READY') {
+      await this.restored;
+      await this.pushConnections();
+      this.postMessage({type:'OPEN_TAB',payload:{tab:this.requestedTab}});
+      if(this.requestedConnection)this.postMessage({type:'EDIT_CONNECTION',payload:this.requestedConnection});
+      this.postMessage({type:'BACKEND_STATUS',payload:{state:this.client?'ready':'stopped'}});return;
+    }
     if (msg.type === 'STORE_API_KEY') {
-      const { provider, key } = msg.payload as { provider: 'gemini' | 'groq'; key: string };
-      if (provider === 'gemini') { await this.secrets.storeGeminiKey(key); }
-      if (provider === 'groq')   { await this.secrets.storeGroqKey(key); }
+      const { provider, key } = msg.payload as { provider: 'gemini' | 'groq' | 'openrouter'; key: string };
+      if (!['gemini','groq','openrouter'].includes(provider) || key.trim().length<10) throw new Error('Choose a supported provider and paste the full key.');
+      if (provider === 'gemini') { await this.secrets.storeGeminiKey(key.trim()); }
+      if (provider === 'groq')   { await this.secrets.storeGroqKey(key.trim()); }
+      if (provider === 'openrouter') { await this.secrets.storeOpenRouterKey(key.trim()); }
       this.panel.webview.postMessage({
         type: 'SETTINGS_UPDATED',
         requestId: msg.requestId,
-        payload: { saved: true, provider },
+        payload: { saved: true, provider, verified:false },
       });
       return;
     }
@@ -138,136 +165,73 @@ export class VerbisPanel {
     }
 
     if (msg.type === 'CONNECTION_FORM_SAVE') {
-      const form = msg.payload as {
-        name: string; dialect: DBConfig['dialect']; host: string;
-        port: number; database: string; user: string; ssl?: boolean;
-      };
-      if (!form.name || !form.database || !form.user) {
-        this.sendError('Connection name, database and user are required.');
-        return;
-      }
-      const cfg = await this.workspace.readConfig();
-      const id = crypto.randomUUID();
-      cfg.connections.push({
-        id,
-        name: form.name,
-        dialect: form.dialect,
-        host: form.host || 'localhost',
-        port: form.port,
-        database: form.database,
-        user: form.user,
-        ssl: form.ssl,
-      });
-      await this.workspace.writeConfig(cfg);
-      this.setActiveConnection(id);
+      const {password='', ...form}=msg.payload as DBConfig & {password?:string};
+      if (!form.name || !form.database || (form.dialect!=='sqlite' && !form.user)) throw new Error('Connection name, database and a user for remote databases are required.');
+      const id=form.id || crypto.randomUUID();
+      const connection={...form,id};
+      if(!this.client) throw new Error('Start the backend before validating a connection.');
+      await saveConnection(this.client,this.workspace,this.secrets,connection,password);
       await this.pushConnections();
-      this.panel.webview.postMessage({
-        type: 'SETTINGS_UPDATED',
-        requestId: msg.requestId,
-        payload: { saved: true, connectionId: id },
-      });
-      return;
+      this.postMessage({type:'SETTINGS_UPDATED',requestId:msg.requestId,payload:{saved:true,connectionId:id}});return;
+    }
+    if (msg.type === 'DELETE_CONNECTION') {
+      const {id}=msg.payload as {id:string};
+      await vscode.commands.executeCommand('verbis.deleteConnection',{id:`conn:${id}`});
+      await this.pushConnections();
+      this.postMessage({type:'SETTINGS_UPDATED',requestId:msg.requestId,payload:{deleted:!(await this.workspace.readConfig()).connections.some(c=>c.id===id)}});return;
+    }
+    if (msg.type === 'OPEN_SOURCE') {
+      const {path:source,line}=msg.payload as {path:string;line:number};
+      const resolved=path.resolve(this.workspace.workspaceRootPath,source);
+      if(!resolved.startsWith(this.workspace.workspaceRootPath+path.sep))throw new Error('Source link is outside this workspace.');
+      const doc=await vscode.workspace.openTextDocument(resolved);
+      await vscode.window.showTextDocument(doc,{selection:new vscode.Range(Math.max(0,line-1),0,Math.max(0,line-1),0)});return;
     }
 
-    if (msg.type === 'STORE_DB_PASSWORD') {
-      const { name, password } = msg.payload as { name: string; password: string };
-      // The webview sends the connection display name; resolve it to the
-      // most recently added connection with that name (the one just saved).
-      const cfg = await this.workspace.readConfig();
-      const match = [...cfg.connections].reverse().find(c => c.name === name);
-      if (match && password) {
-        await this.secrets.storeDbPassword(match.id, password);
-      }
-      return;
+    if(msg.type==='PICK_CSV') {
+      const {encoding='utf-8'}=msg.payload as {encoding?:string};
+      const files=await vscode.window.showOpenDialog({canSelectMany:false,filters:{CSV:['csv','tsv','txt']},title:'Select a dataset (10 MB maximum)'});
+      if(!files){this.postMessage({type:'WORKSPACE_RESULT',requestId:msg.requestId,payload:{cancelled:true}});return;}
+      const stat=await fs.promises.stat(files[0].fsPath);if(stat.size>10*1024*1024)throw new Error('CSV limit is 10 MB');
+      const bytes=await fs.promises.readFile(files[0].fsPath);
+      const content=new TextDecoder(encoding,{fatal:true}).decode(bytes);
+      this.postMessage({type:'WORKSPACE_RESULT',requestId:msg.requestId,payload:{source:files[0].fsPath,encoding,content}});return;
     }
+    if(msg.type==='EXPORT_FILE') {
+      const {content,name}=msg.payload as {content:string;name:string};
+      if(typeof content!=='string'||content.length>20*1024*1024)throw new Error('Export exceeds 20 MB');
+      const file=await vscode.window.showSaveDialog({defaultUri:vscode.Uri.file(path.join(this.workspace.workspaceRootPath,path.basename(name)))});
+      if(file)await fs.promises.writeFile(file.fsPath,content,'utf8');
+      this.postMessage({type:'WORKSPACE_RESULT',requestId:msg.requestId,payload:{saved:!!file}});return;
+    }
+    if(msg.type==='CANCEL_REQUEST') {this.session.cancel();return;}
 
     // All remaining message types require the backend to be ready.
     if (!this.client) {
-      this.sendError('Backend not ready yet. Please wait a moment and try again.');
+      this.sendError('Backend not ready. Run Verbis: Install / Reinstall Backend.',msg.requestId);
       return;
     }
 
-    try {
       switch (msg.type) {
+        case 'OPEN_ANALYSIS': {
+          const {id}=msg.payload as {id:string};const data=await this.client.workspaceAction('analysis_list',{});
+          const entry=data.analyses.find((a:any)=>a.id===id);if(!entry)throw new Error('Saved analysis no longer exists');
+          await this.workspace.setActiveConnection(entry.connectionId);this.session.restoreAnalysis(entry);
+          this.postMessage({type:'WORKSPACE_RESULT',requestId:msg.requestId,payload:entry});break;
+        }
         case 'GENERATE_SQL': {
-          const payload = msg.payload as {
-            input: string;
-            sessionId: string;
-            dbConfigId: string;
-            disambiguationAnswers?: Record<string, string>;
-          };
-
-          // Read preference memory to attach as context
-          const memory = await this.workspace.readMemory();
-
-          // ── Resolve provider + API key from VS Code config + SecretStorage ──
-          const provider = vscode.workspace
-            .getConfiguration('verbis')
-            .get<string>('llm.provider', 'gemini');
-          const apiKey = (await this.secrets.getActiveApiKey()) ?? '';
-          if (!apiKey && provider !== 'local') {
-            this.sendError(
-              `No ${provider} API key set. Run "Verbis: Set Gemini API Key" first.`
-            );
-            return;
-          }
-
-          const result = await this.client.generate({
-            nlInput: payload.input,
-            dbConfigId: payload.dbConfigId,
-            sessionId: payload.sessionId,
-            disambiguationAnswers: payload.disambiguationAnswers,
-            apiKey,
-            provider,
-            model: this.resolveModel(provider),
-          });
-
-          this.panel.webview.postMessage({
-            type: 'SQL_GENERATED',
-            requestId: msg.requestId,
-            payload: {
-              ...result,
-              input: payload.input,
-              memory: { disambiguationRules: memory.disambiguationRules },
-            },
-          });
-          break;
+          const {input}=msg.payload as {input:string};
+          const reply=await this.session.ask(input);
+          if(reply.kind==='error')throw new Error(reply.message);
+          this.postMessage({type:'SQL_GENERATED',requestId:msg.requestId,payload:reply});break;
         }
-
         case 'EXECUTE_SQL': {
-          const payload = msg.payload as {
-            sql: string;
-            dbConfigId: string;
-            rowLimit?: number;
-            timeoutSeconds?: number;
-          };
-          const execResult = await this.client.execute(payload);
-
-          // Write to performance log + history (Contributions #3, #11)
-          await this.workspace.appendPerfLog({
-            queryFingerprint: hashSql(payload.sql),
-            timestamp: Date.now(),
-            executionTimeMs: execResult.executionTimeMs,
-            rowsScanned: execResult.rowsScanned,
-          });
-          await this.workspace.appendHistory({
-            id: crypto.randomUUID(),
-            timestamp: Date.now(),
-            nlInput: '',
-            sql: payload.sql,
-            success: !execResult.regressionAlert,
-            executionTimeMs: execResult.executionTimeMs,
-            rowCount: execResult.rowCount,
-          });
-
-          this.panel.webview.postMessage({
-            type: 'EXECUTION_COMPLETE',
-            requestId: msg.requestId,
-            payload: execResult,
-          });
-          break;
+          const {sql,dbConfigId,schemaFingerprint,parameters={}}=msg.payload as {sql:string;dbConfigId:string;schemaFingerprint?:string;parameters?:Record<string,unknown>};
+          this.session.bindSql(sql,dbConfigId,schemaFingerprint);
+          const outcome=await this.session.execute(sql,parameters);
+          if(outcome.kind!=='result')throw new Error(outcome.message??'Execution cancelled.');
+          this.postMessage({type:'EXECUTION_COMPLETE',requestId:msg.requestId,payload:outcome.result});break;
         }
-
         case 'AMBIGUITY_ANSWERED': {
           const payload = msg.payload as {
             ruleKey: string;
@@ -310,63 +274,85 @@ export class VerbisPanel {
 
         // ── Fix D — SELECT_CONNECTION: forward to extension host command ──
         case 'SELECT_CONNECTION': {
-          await vscode.commands.executeCommand('verbis.selectConnection');
+          await vscode.commands.executeCommand('verbis.selectConnection',(msg.payload as {id?:string})?.id);
           break;
         }
 
         // ── Fix C — Text2Schema: NL → schema JSON → DDL → Mermaid ──────
+        case 'LOAD_SCHEMA': {
+          const id=await this.resolveConnectionId();if(!id)throw new Error('Select a connection.');
+          const result=await this.client.getSchema(id);await this.workspace.writeSchemaCache(result.tables);
+          this.postMessage({type:'SCHEMA_LOADED',requestId:msg.requestId,payload:{...result,connectionId:id}});break;
+        }
+        case 'LOAD_TREE': {this.postMessage({type:'TREE_UPDATED',requestId:msg.requestId,payload:await this.workspace.readQueryTree()});break;}
+        case 'GET_GLOSSARY': {this.postMessage({type:'GLOSSARY_LOADED',requestId:msg.requestId,payload:await this.client.getGlossary()});break;}
+        case 'ROBUSTNESS_REQUESTED': {
+          const id=await this.resolveConnectionId();if(!id)throw new Error('Select a connection.');
+          const history=(await this.workspace.readHistory()).filter(h=>h.connectionId===id);
+          this.postMessage({type:'ROBUSTNESS_RESULT',requestId:msg.requestId,payload:await this.client.runRobustness({dbConfigId:id,querySet:history})});break;
+        }
+        case 'WORKSPACE_ACTION': {
+          const {action,payload}=msg.payload as {action:string;payload?:unknown};
+          const result=await this.client.workspaceAction(action,payload);
+          if(action==='dataset_import'&&result.connection){await this.workspace.upsertConnection(result.connection);await this.pushConnections();}
+          this.postMessage({type:'WORKSPACE_RESULT',requestId:msg.requestId,payload:result});break;
+        }
         case 'SCHEMA_CREATE': {
           const { description, dialect } = msg.payload as { description: string; dialect: string };
-          const apiKey = await this.secrets.getActiveApiKey() ?? '';
-          const provider = vscode.workspace.getConfiguration('verbis').get<string>('llm.provider', 'gemini');
           try {
-            const result = await this.client.createSchema({ description, dialect, provider, apiKey, model: this.resolveModel(provider) });
-            this.panel.webview.postMessage({ type: 'SCHEMA_RESULT', payload: result });
+            const result = await this.session.withProvider((client,options,signal)=>client.createSchema({description,dialect,...options},signal));
+            this.panel.webview.postMessage({ type: 'SCHEMA_RESULT', requestId:msg.requestId,payload: result });
           } catch (e: any) {
-            this.panel.webview.postMessage({ type: 'SCHEMA_ERROR', payload: { message: e.message } });
+            this.sendError(e.message,msg.requestId);
           }
           break;
         }
 
         case 'SCHEMA_REFINE': {
           const { schema, refinement, dialect } = msg.payload as { schema: any; refinement: string; dialect: string };
-          const apiKey = await this.secrets.getActiveApiKey() ?? '';
-          const provider = vscode.workspace.getConfiguration('verbis').get<string>('llm.provider', 'gemini');
           try {
-            const result = await this.client.refineSchema({ schema, refinement, dialect, provider, apiKey, model: this.resolveModel(provider) });
-            this.panel.webview.postMessage({ type: 'SCHEMA_RESULT', payload: result });
+            const result = await this.session.withProvider((client,options,signal)=>client.refineSchema({schema,refinement,dialect,...options},signal));
+            this.panel.webview.postMessage({ type: 'SCHEMA_RESULT', requestId:msg.requestId,payload: result });
           } catch (e: any) {
-            this.panel.webview.postMessage({ type: 'SCHEMA_ERROR', payload: { message: e.message } });
+            this.sendError(e.message,msg.requestId);
           }
           break;
         }
 
         case 'SCHEMA_EXECUTE': {
-          const { ddl } = msg.payload as { ddl: string };
+          const { ddl, dialect } = msg.payload as { ddl: string; dialect: string };
           const connectionId = await this.resolveConnectionId();
           if (!connectionId) {
             this.panel.webview.postMessage({
-              type: 'SCHEMA_ERROR',
+              type: 'ERROR',requestId:msg.requestId,
               payload: { message: 'No database connection active. Add a connection first via Verbis: Add Database Connection.' },
             });
             break;
           }
+          const target=(await this.workspace.readConfig()).connections.find(c=>c.id===connectionId);
+          if(!target||target.dialect!==dialect){this.sendError('The reviewed DDL dialect does not match the active connection. Select the intended database or generate again for its dialect.',msg.requestId);break;}
+          const confirmed=await vscode.window.showWarningMessage(`Apply the displayed schema DDL to ${connectionId}?`,{modal:true},'Apply DDL');
+          if(confirmed!=='Apply DDL') {this.sendError('Cancelled.',msg.requestId);break;}
           try {
             await this.client.execute({
               sql: ddl,
               dbConfigId: connectionId,   // ← RESOLVED, not hardcoded 'default'
-              rowLimit: 0,                // DDL doesn't return rows
+              rowLimit: 500,
+              readOnly: vscode.workspace.getConfiguration('verbis').get<boolean>('execution.readOnlyByDefault',true),
+              timeoutSeconds:vscode.workspace.getConfiguration('verbis').get<number>('execution.timeoutSeconds',60)
             });
             // Fix C: refresh schema cache + ChromaDB index so chat knows
             // about the new tables. Wrapped in try/catch — non-fatal.
+            let refreshed=true;
             try {
               await this.client.refreshSchema(connectionId);
             } catch (refreshErr) {
+              refreshed=false;
               console.warn('[Verbis] Schema refresh after DDL failed (non-fatal):', refreshErr);
             }
-            this.panel.webview.postMessage({ type: 'SCHEMA_EXECUTED', payload: {} });
+            this.panel.webview.postMessage({ type: 'SCHEMA_EXECUTED', requestId:msg.requestId,payload: {refreshed} });
           } catch (e: any) {
-            this.panel.webview.postMessage({ type: 'SCHEMA_ERROR', payload: { message: e.message } });
+            this.panel.webview.postMessage({ type: 'ERROR', requestId:msg.requestId,payload: { message: e.message } });
           }
           break;
         }
@@ -375,7 +361,7 @@ export class VerbisPanel {
           console.warn(`[Verbis] Unhandled message type: ${msg.type}`);
       }
     } catch (err) {
-      this.sendError((err as Error).message);
+      this.sendError((err as Error).message, msg.requestId);
     }
   }
 
@@ -389,13 +375,13 @@ export class VerbisPanel {
     const cfg = await this.workspace.readConfig();
     this.panel.webview.postMessage({
       type: 'CONNECTIONS_UPDATED',
-      payload: { connections: cfg.connections },
+      payload: { connections: cfg.connections, activeConnectionId:await this.workspace.getActiveConnectionId() },
     });
   }
 
-  private sendError(message: string): void {
+  private sendError(message: string, requestId?: string): void {
     this.panel.webview.postMessage({
-      type: 'ERROR',
+      type: 'ERROR', requestId,
       payload: { message },
     });
   }
@@ -421,14 +407,14 @@ export class VerbisPanel {
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none';
                  img-src ${this.panel.webview.cspSource} https:;
-                 script-src 'nonce-${nonce}';
+                 script-src 'nonce-${nonce}' ${this.panel.webview.cspSource};
                  style-src ${this.panel.webview.cspSource} 'unsafe-inline';" />
   <title>Verbis</title>
   <link rel="stylesheet" href="${styleUri}" />
 </head>
 <body>
   <div id="root"></div>
-  <script nonce="${nonce}" src="${scriptUri}"></script>
+  <script type="module" nonce="${nonce}" src="${scriptUri}"></script>
 </body>
 </html>`;
   }
@@ -436,6 +422,7 @@ export class VerbisPanel {
   // ─── Dispose ───────────────────────────────────────────────────────
   public dispose(): void {
     VerbisPanel.currentPanel = undefined;
+    this.session.cancel();this.session.discardSessionKey();
     this.panel.dispose();
     this.disposables.forEach(d => d.dispose());
     this.disposables = [];

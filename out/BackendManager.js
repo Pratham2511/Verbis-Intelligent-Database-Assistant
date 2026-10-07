@@ -43,6 +43,7 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.BackendManager = void 0;
 const child_process_1 = require("child_process");
+const crypto = __importStar(require("crypto"));
 const net = __importStar(require("net"));
 const events_1 = require("events");
 const vscode = __importStar(require("vscode"));
@@ -63,6 +64,11 @@ class BackendManager extends events_1.EventEmitter {
     client = null;
     crashTimestamps = [];
     status = { state: 'stopped' };
+    stopping = false;
+    epoch = 0;
+    startTask;
+    token = crypto.randomBytes(32).toString('hex');
+    output = vscode.window.createOutputChannel('Verbis Backend');
     constructor(backendScriptPath, backendDir, workspacePath, pythonExe, // ← from BackendInstaller
     startPort = 8765, getEnvVars) {
         super();
@@ -73,37 +79,68 @@ class BackendManager extends events_1.EventEmitter {
         this.startPort = startPort;
         this.getEnvVars = getEnvVars;
     }
+    setPythonExe(exe) { this.pythonExe = exe; }
     // ─── Startup ────────────────────────────────────────────────────────
     async start() {
+        if (this.startTask)
+            return this.startTask;
+        this.stopping = false;
+        const task = this.startInternal(++this.epoch);
+        this.startTask = task;
+        try {
+            return await task;
+        }
+        finally {
+            if (this.startTask === task)
+                this.startTask = undefined;
+        }
+    }
+    async startInternal(epoch) {
         if (this.status.state === 'ready')
             return this.status;
         this.setStatus({ state: 'starting' });
         // Find free port
-        this.port = await this.findFreePort(this.startPort);
-        if (!this.port) {
+        const port = await this.findFreePort(this.startPort);
+        if (epoch !== this.epoch)
+            return this.status;
+        this.port = port;
+        if (!port) {
             const msg = `Cannot start backend — ports ${this.startPort}-${this.startPort + MAX_PORT_RETRIES} all in use.`;
             this.setStatus({ state: 'crashed', lastError: msg });
             vscode.window.showErrorMessage(msg);
             return this.status;
         }
-        this.client = new BackendClient_1.BackendClient(`http://127.0.0.1:${this.port}`);
+        this.client = new BackendClient_1.BackendClient(`http://127.0.0.1:${this.port}`, 90_000, this.token);
         // Spawn Python process using the resolved pythonExe from BackendInstaller
         const extraEnv = this.getEnvVars ? await this.getEnvVars() : {};
-        this.process = (0, child_process_1.spawn)(this.pythonExe, [this.backendScriptPath, '--port', String(this.port), '--workspace', this.workspacePath], { cwd: this.backendDir, env: { ...process.env, ...extraEnv }, detached: false });
+        if (epoch !== this.epoch)
+            return this.status;
+        this.process = (0, child_process_1.spawn)(this.pythonExe, [this.backendScriptPath, '--port', String(this.port), '--workspace', this.workspacePath], { cwd: this.backendDir, env: { ...process.env, ...extraEnv, QM_BACKEND_TOKEN: this.token }, detached: false });
+        const child = this.process;
+        child.on('error', err => { if (this.process !== child || epoch !== this.epoch)
+            return; this.setStatus({ state: 'crashed', lastError: err.message }); this.output.appendLine(err.message); });
         this.process.on('exit', (code, signal) => {
-            const wasReady = this.status.state === 'ready';
+            if (this.process !== child)
+                return;
+            const wasReady = this.status.state === 'ready' && !this.stopping;
+            this.process = null;
+            this.client = null;
+            if (!this.stopping)
+                this.setStatus({ state: 'crashed', lastError: `Backend exited (${code ?? signal})` });
             console.warn(`[Verbis] Python backend exited: code=${code} signal=${signal}`);
             if (wasReady) {
                 this.handleCrash();
             }
         });
         this.process.stderr?.on('data', (chunk) => {
-            console.error(`[Verbis backend stderr] ${chunk.toString()}`);
+            this.output.append(chunk.toString());
         });
         // Health check polling
-        const ready = await this.waitForHealth();
-        if (ready) {
-            this.setStatus({ state: 'ready', port: this.port, pid: this.process?.pid });
+        const ready = await this.waitForHealth(epoch);
+        if (epoch !== this.epoch)
+            return this.status;
+        if (ready && !this.stopping && this.process === child && child.exitCode === null) {
+            this.setStatus({ state: 'ready', port, pid: child.pid });
         }
         else {
             this.setStatus({
@@ -118,17 +155,20 @@ class BackendManager extends events_1.EventEmitter {
         return this.status;
     }
     // ─── Health Polling ─────────────────────────────────────────────────
-    async waitForHealth() {
+    async waitForHealth(epoch) {
         if (!this.client)
             return false;
         const deadline = Date.now() + HEALTH_CHECK_TIMEOUT_MS;
         while (Date.now() < deadline) {
+            if (epoch !== this.epoch || !this.process || this.process.exitCode !== null)
+                return false;
             try {
                 const h = await this.client.health();
                 if (h.status === 'ok')
                     return true;
             }
-            catch {
+            catch (err) {
+                this.output.appendLine('Health check: ' + err.message);
                 // Still starting
             }
             await new Promise(r => setTimeout(r, HEALTH_CHECK_INTERVAL_MS));
@@ -143,7 +183,8 @@ class BackendManager extends events_1.EventEmitter {
         if (this.crashTimestamps.length === 1) {
             console.warn('[Verbis] Auto-restarting backend (first crash)...');
             await new Promise(r => setTimeout(r, 1000));
-            await this.start();
+            if (!this.stopping)
+                await this.start();
         }
         else {
             this.setStatus({ state: 'crashed', lastError: 'Backend crashed twice within 30s. Manual restart required.' });
@@ -161,23 +202,25 @@ class BackendManager extends events_1.EventEmitter {
     }
     // ─── Shutdown ───────────────────────────────────────────────────────
     async stop() {
-        if (this.client) {
-            await this.client.shutdown();
-        }
-        if (this.process) {
-            // Wait 2s then SIGKILL
-            await new Promise(r => setTimeout(r, 500));
-            if (!this.process.killed) {
-                this.process.kill('SIGTERM');
-                setTimeout(() => {
-                    if (this.process && !this.process.killed) {
-                        this.process.kill('SIGKILL');
-                    }
-                }, 1500);
-            }
-            this.process = null;
-        }
+        this.stopping = true;
+        const epoch = ++this.epoch;
+        this.startTask = undefined;
+        const child = this.process, client = this.client;
+        this.process = null;
+        this.client = null;
         this.setStatus({ state: 'stopped' });
+        if (client)
+            await Promise.race([client.shutdown(), new Promise(r => setTimeout(r, 1000))]);
+        if (child && child.exitCode === null && child.signalCode === null) {
+            await new Promise(resolve => { const timer = setTimeout(done, 500); function done() { clearTimeout(timer); child?.removeListener('exit', done); resolve(); } child.once('exit', done); });
+            if (child.exitCode === null && child.signalCode === null) {
+                child.kill('SIGTERM');
+                setTimeout(() => { if (child.exitCode === null && child.signalCode === null)
+                    child.kill('SIGKILL'); }, 1500);
+            }
+        }
+        if (epoch === this.epoch)
+            this.setStatus({ state: 'stopped' });
     }
     // ─── Port Scanner ──────────────────────────────────────────────────
     findFreePort(start) {
@@ -200,7 +243,7 @@ class BackendManager extends events_1.EventEmitter {
     }
     // ─── Status ─────────────────────────────────────────────────────────
     getClient() {
-        return this.client;
+        return this.status.state === 'ready' ? this.client : null;
     }
     getStatus() {
         return this.status;

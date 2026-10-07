@@ -25,12 +25,15 @@ from services.sql_generator import SQLCandidate
 
 
 class GlossaryService:
+    _locks = {}
+    _registry_lock = threading.Lock()
     SIMILARITY_HIGH = 0.80   # deterministic template SQL
     SIMILARITY_MID = 0.50    # few-shot hint
 
     def __init__(self, glossary_path: Path) -> None:
         self._path = glossary_path
-        self._lock = threading.Lock()
+        with self._registry_lock:
+            self._lock = self._locks.setdefault(str(glossary_path.resolve()), threading.RLock())
 
     # ─── CRUD ──────────────────────────────────────────────────────────
     def read(self) -> GlossaryStore:
@@ -39,8 +42,8 @@ class GlossaryService:
         try:
             data = json.loads(self._path.read_text())
             return GlossaryStore(**data)
-        except Exception:
-            return GlossaryStore(terms=[])
+        except Exception as exc:
+            raise ValueError('Glossary file is unreadable; existing definitions were preserved') from exc
 
     def write(self, store: GlossaryStore) -> None:
         with self._lock:
@@ -49,10 +52,12 @@ class GlossaryService:
             tmp.replace(self._path)
 
     def upsert(self, term: GlossaryTerm) -> None:
-        store = self.read()
-        store.terms = [t for t in store.terms if t.term != term.term]
-        store.terms.append(term)
-        self.write(store)
+        if isinstance(term, dict): term = GlossaryTerm.model_validate(term)
+        with self._lock:
+            store = self.read()
+            store.terms = [t for t in store.terms if (t.term,t.connectionId) != (term.term,term.connectionId)]
+            store.terms.append(term)
+            self.write(store)
 
     # ─── Semantic Router (Novel #10) ───────────────────────────────────
     def route(self, nl_input: str) -> Optional[SQLCandidate]:

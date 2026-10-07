@@ -35,31 +35,52 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.SecretsService = void 0;
 const vscode = __importStar(require("vscode"));
+const crypto = __importStar(require("crypto"));
 class SecretsService {
     context;
+    verified = new Map();
+    markVerified(provider, key, model) { this.verified.set(this.verificationId(provider, key, model), Date.now()); }
+    verifiedAt(provider, key, model) { return this.verified.get(this.verificationId(provider, key, model)); }
+    verificationId(provider, key, model) { return provider + ':' + model + ':' + crypto.createHash('sha256').update(key).digest('hex'); }
     static GEMINI_KEY = 'verbis.geminiApiKey';
     static GROQ_KEY = 'verbis.groqApiKey';
+    static OPENROUTER_KEY = 'verbis.openrouterApiKey';
     static DB_PREFIX = 'verbis.db.password.';
     constructor(context) {
         this.context = context;
     }
     async storeGeminiKey(key) {
-        await this.context.secrets.store(SecretsService.GEMINI_KEY, key);
+        this.verified.clear();
+        await this.context.secrets.store(SecretsService.GEMINI_KEY, key.trim());
     }
     async getGeminiKey() {
         return this.context.secrets.get(SecretsService.GEMINI_KEY);
     }
     async deleteGeminiKey() {
+        this.verified.clear();
         await this.context.secrets.delete(SecretsService.GEMINI_KEY);
     }
     async storeGroqKey(key) {
-        await this.context.secrets.store(SecretsService.GROQ_KEY, key);
+        this.verified.clear();
+        await this.context.secrets.store(SecretsService.GROQ_KEY, key.trim());
     }
     async getGroqKey() {
         return this.context.secrets.get(SecretsService.GROQ_KEY);
     }
     async deleteGroqKey() {
+        this.verified.clear();
         await this.context.secrets.delete(SecretsService.GROQ_KEY);
+    }
+    async storeOpenRouterKey(key) {
+        this.verified.clear();
+        await this.context.secrets.store(SecretsService.OPENROUTER_KEY, key.trim());
+    }
+    async getOpenRouterKey() {
+        return this.context.secrets.get(SecretsService.OPENROUTER_KEY);
+    }
+    async deleteOpenRouterKey() {
+        this.verified.clear();
+        await this.context.secrets.delete(SecretsService.OPENROUTER_KEY);
     }
     async storeDbPassword(dbId, pw) {
         await this.context.secrets.store(`${SecretsService.DB_PREFIX}${dbId}`, pw);
@@ -70,13 +91,27 @@ class SecretsService {
     async deleteDbPassword(dbId) {
         await this.context.secrets.delete(`${SecretsService.DB_PREFIX}${dbId}`);
     }
-    async getActiveApiKey() {
-        const provider = vscode.workspace
+    async getPrivacySalt() {
+        let salt = await this.context.secrets.get('verbis.privacySalt');
+        if (!salt) {
+            salt = crypto.randomBytes(32).toString('hex');
+            await this.context.secrets.store('verbis.privacySalt', salt);
+        }
+        return salt;
+    }
+    async getActiveApiKey(providerOverride) {
+        const provider = providerOverride ?? vscode.workspace
             .getConfiguration('verbis')
             .get('llm.provider', 'gemini');
+        if (provider === 'local')
+            return undefined;
         if (provider === 'groq')
             return this.getGroqKey();
-        return this.getGeminiKey();
+        if (provider === 'openrouter')
+            return this.getOpenRouterKey();
+        if (provider === 'gemini')
+            return this.getGeminiKey();
+        return undefined;
     }
 }
 exports.SecretsService = SecretsService;

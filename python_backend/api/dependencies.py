@@ -74,8 +74,14 @@ def init_app_state(settings: Settings) -> AppState:
                         user=conn.get('user', ''),
                         password=password,
                         workspace_path=settings.workspace_path,
+                        ssl=conn.get('ssl',False),
                     )
-                    db_pools.register(db_id, url)
+                    tls_args={}
+                    if conn.get('ssl') and conn.get('dialect')=='mysql':
+                        import ssl
+                        tls_args={'ssl':ssl.create_default_context(cafile=conn.get('sslCa'))}
+                    if conn.get('sslCa') and conn.get('dialect')=='postgresql': tls_args={'sslrootcert':conn['sslCa']}
+                    db_pools.register(db_id, url, connect_args=tls_args)
                     logger.info(f"Registered connection {db_id}")
 
                     # Surface where a SQLite connection actually resolved to.

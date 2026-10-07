@@ -1,0 +1,7 @@
+{
+  "host": "Packaged extension in installed VS Code 1.140.0",
+  "checks": [
+    "Real stored query nodes render; checkpoint persists; fork adds one child; comparison shows SQL/connection/measured status",
+    "Connection-scoped glossary term and salary units save through actual webview acknowledgement; remount reload retains definition"
+  ]
+}

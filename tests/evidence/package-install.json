@@ -1,0 +1,10 @@
+{
+  "host": "Installed VS Code 1.140.0",
+  "packageVersion": "1.5.0",
+  "checks": [
+    "Later selected; workspace/reinstall commands remain available",
+    "Fresh packaged installer created a checked environment and ready backend",
+    "Injected invalid dependency failed reinstall; active manifest unchanged; failed stage removed; old environment preserved"
+  ],
+  "environmentSizeBytes": 162928049
+}

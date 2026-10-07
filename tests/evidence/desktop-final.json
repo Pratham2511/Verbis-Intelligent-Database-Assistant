@@ -1,0 +1,16 @@
+{
+  "host": "Final packaged extension in installed VS Code 1.140.0",
+  "provider": "Controlled local fixture for positive inference; real Gemini known-invalid-key negative flow tested separately",
+  "checks": [
+    "Report Save dialog writes correct measured question, bindings, definitions and Dev row after next-question draft edit",
+    "CSV Save dialog writes measured Dev row and headers",
+    "Cancel interrupts real long-running SQLite recursive query; backend remains ready and immediately executes COUNT query",
+    "SQLite form saves without username/password; edit updates same id and live backend",
+    "Selecting second SQLite schema displays products without employees from first database",
+    "Native delete confirmation removes disposable configuration and preserves database file"
+  ],
+  "driverNotes": [
+    "Corrected enabled Save selection and async connection-list remount wait",
+    "Native old-build restart error was acknowledged; verified disposable delete dialog and confirmed with X11 input in isolated window only"
+  ]
+}

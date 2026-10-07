@@ -9,6 +9,9 @@ Safe execution:
 from __future__ import annotations
 
 import time
+import asyncio
+import threading
+import sqlite3
 from typing import Any, Dict, List
 
 import sqlglot
@@ -37,6 +40,12 @@ def _split_statements(sql: str, dialect: str | None = None) -> List[str]:
     for expr in expressions:
         if expr is None:
             continue
+        # SQLAlchemy text() binds :name. Dialect generators otherwise change
+        # PostgreSQL placeholders into %(name)s, which text() treats as literal
+        # percent signs and escapes a second time for psycopg2.
+        expr = expr.transform(lambda node: sqlglot.exp.Var(this=':' + node.name)
+                              if isinstance(node, sqlglot.exp.Placeholder) and node.name
+                              else node)
         stmt_sql = expr.sql(dialect=dialect) if dialect else expr.sql()
         if stmt_sql and stmt_sql.strip():
             statements.append(stmt_sql)
@@ -44,113 +53,101 @@ def _split_statements(sql: str, dialect: str | None = None) -> List[str]:
 
 
 class ExecutionService:
-    def __init__(self, engine, timeout_seconds: int = 60, row_limit: int = 500) -> None:
+    def __init__(self, engine, timeout_seconds=60, row_limit=500, read_only=False, cancel_event=None):
         self.engine = engine
         self.timeout_seconds = timeout_seconds
         self.row_limit = row_limit
+        self.read_only = read_only
+        self.cancel_event = cancel_event or threading.Event()
 
-    async def execute(self, sql: str) -> Dict[str, Any]:
-        start = time.perf_counter()
-        # Derive the dialect from the engine so statement splitting is
-        # dialect-aware (e.g. sqlite vs postgres quoting/keywords).
-        try:
-            dialect = self.engine.dialect.name
-        except Exception:
-            dialect = None
-        # sqlglot uses 'postgres'; SQLAlchemy uses 'postgresql'.
-        sqlglot_dialect = 'postgres' if dialect == 'postgresql' else dialect
+    async def execute(self, sql, parameters=None):
+        return await asyncio.to_thread(self._execute_sync, sql, parameters or {})
 
-        statements = _split_statements(sql, dialect=sqlglot_dialect)
-        if not statements:
-            return {
-                'columns': [],
-                'rows': [],
-                'rowCount': 0,
-                'executionTimeMs': int((time.perf_counter() - start) * 1000),
-                'truncated': False,
-            }
-
-        with self.engine.connect().execution_options(
-            timeout=self.timeout_seconds
-        ) as conn:
-            columns: List[str] = []
-            rows: List[Dict] = []
-            truncated = False
-            statements_executed = 0
-            total = len(statements)
-
-            for index, stmt_sql in enumerate(statements, start=1):
-                try:
-                    result = conn.execute(text(stmt_sql))
-                except Exception as exc:
-                    # Stop on first failure; roll back so partial writes from
-                    # earlier statements in this script do not persist.
-                    conn.rollback()
-                    raise RuntimeError(
-                        f'Statement {index} of {total} failed: {exc}. '
-                        f'Statement: {stmt_sql[:200]}'
-                    ) from exc
-                statements_executed = index
-
-                if result.returns_rows:
-                    # Row-returning statement: capture its result set. If more
-                    # than one statement returns rows, the LAST one wins (the
-                    # meaningful final result of the script).
-                    columns = list(result.keys())
-                    rows = []
-                    for i, row in enumerate(result):
-                        if i >= self.row_limit:
-                            logger.info(f'Row limit ({self.row_limit}) hit; truncating.')
-                            truncated = True
-                            break
-                        rows.append(dict(row._mapping) if hasattr(row, '_mapping') else dict(row))
-
-            # All statements succeeded: commit so DDL/DML writes persist.
-            conn.commit()
-            elapsed = int((time.perf_counter() - start) * 1000)
-            out: Dict[str, Any] = {
-                'columns': columns,
-                'rows': rows,
-                'rowCount': len(rows),
-                'executionTimeMs': elapsed,
-                'truncated': truncated,
-            }
-            if total > 1:
-                out['statementsExecuted'] = statements_executed
-            return out
-
-    async def explain(self, sql: str) -> Dict[str, Any] | None:
-        """Fetch EXPLAIN (ANALYZE) output as JSON. Best-effort.
-
-        Only meaningful for a single row-returning statement; for multi-statement
-        scripts, explain just the first statement (EXPLAIN cannot wrap a script).
-        """
-        try:
+    def _execute_sync(self, sql, parameters):
+        start = time.monotonic()
+        deadline = start + self.timeout_seconds
+        dialect = self.engine.dialect.name
+        statements = _split_statements(sql, 'postgres' if dialect == 'postgresql' else dialect)
+        with self.engine.connect() as conn:
+            raw = conn.connection.driver_connection
+            timed_out = threading.Event()
+            def interrupted():
+                return self.cancel_event.is_set() or time.monotonic() >= deadline
+            finished = threading.Event()
+            def monitor():
+                while not finished.wait(0.02):
+                    if interrupted():
+                        timed_out.set()
+                        try:
+                            if dialect == 'sqlite': raw.interrupt()
+                            elif dialect == 'postgresql': raw.cancel()
+                            elif dialect == 'mysql':
+                                # A separate connection is required while the first is blocked.
+                                with self.engine.connect() as control:
+                                    control.exec_driver_sql(f'KILL QUERY {int(raw.thread_id())}')
+                        except Exception:
+                            pass  # Server-side statement timeout remains the fallback.
+                        return
+            monitor_thread = threading.Thread(target=monitor, daemon=True)
+            if dialect == 'sqlite':
+                raw.set_progress_handler(lambda: int(interrupted()), 1000)
+                if self.read_only:
+                    conn.exec_driver_sql('PRAGMA query_only=ON')
+            elif dialect == 'postgresql':
+                if self.read_only: conn.exec_driver_sql('SET TRANSACTION READ ONLY')
+                conn.execute(text("SELECT set_config('statement_timeout', :ms, true)"), {'ms': str(self.timeout_seconds * 1000)})
+            elif dialect == 'mysql':
+                conn.exec_driver_sql(f'SET SESSION MAX_EXECUTION_TIME={self.timeout_seconds * 1000}')
+                if self.read_only: conn.exec_driver_sql('SET TRANSACTION READ ONLY')
+            monitor_thread.start()
             try:
-                dialect = self.engine.dialect.name
-            except Exception:
-                dialect = None
-            sqlglot_dialect = 'postgres' if dialect == 'postgresql' else dialect
-            statements = _split_statements(sql, dialect=sqlglot_dialect)
-            first = statements[0] if statements else sql
+                columns, rows, truncated = [], [], False
+                index=0
+                for index, stmt in enumerate(statements, 1):
+                    if interrupted(): raise TimeoutError('Query cancelled or timed out')
+                    result = conn.execute(text(stmt), parameters)
+                    if result.returns_rows:
+                        columns = list(result.keys())
+                        if len(columns) != len(set(columns)):
+                            raise ValueError('Duplicate result column names; give joined columns distinct aliases.')
+                        fetched = result.fetchmany(self.row_limit + 1)
+                        rows = [dict(r._mapping) for r in fetched[:self.row_limit]]
+                        truncated = len(fetched) > self.row_limit
+                    result.close()
+                if interrupted(): raise TimeoutError('Query cancelled or timed out')
+                conn.commit()
+                out = {'columns': columns, 'rows': rows, 'rowCount': len(rows),
+                       'executionTimeMs': int((time.monotonic()-start)*1000), 'truncated': truncated}
+                if len(statements)>1: out['statementsExecuted'] = len(statements)
+                return out
+            except Exception as exc:
+                conn.rollback()
+                if interrupted() or timed_out.is_set(): raise TimeoutError('Query cancelled or timed out') from exc
+                raise RuntimeError(f'Statement {index} of {len(statements)} failed: {exc}') from exc
+            finally:
+                finished.set()
+                monitor_thread.join(timeout=2)
+                if monitor_thread.is_alive(): conn.invalidate()
+                if dialect == 'sqlite':
+                    raw.set_progress_handler(None, 0)
+                    if self.read_only: conn.exec_driver_sql('PRAGMA query_only=OFF')
+                    conn.rollback()
+                elif dialect == 'mysql':
+                    conn.exec_driver_sql('SET SESSION MAX_EXECUTION_TIME=0')
+                    conn.rollback()
 
-            # SQLite has no EXPLAIN (ANALYZE, FORMAT JSON). Skip plan analysis
-            # quietly for dialects that don't support a JSON plan — this is
-            # expected, not a warning-worthy failure.
-            if dialect in ('sqlite', 'mssql', 'oracle'):
-                return None
-
+    async def explain(self, sql):
+        # Explain-only; ANALYZE would execute a statement a second time.
+        from services.validator_service import Validator
+        dialect = self.engine.dialect.name
+        if not Validator(dialect).is_read_only_script(sql): return None
+        if len(_split_statements(sql, 'postgres' if dialect == 'postgresql' else dialect)) != 1: return None
+        def run():
             with self.engine.connect() as conn:
-                # PostgreSQL: EXPLAIN (ANALYZE, FORMAT JSON) ...
-                # MySQL: EXPLAIN FORMAT=JSON ...
-                if dialect == 'mysql':
-                    explain_sql = f'EXPLAIN FORMAT=JSON {first}'
-                else:
-                    explain_sql = f'EXPLAIN (ANALYZE, FORMAT JSON) {first}'
-                result = conn.execute(text(explain_sql))
-                row = result.fetchone()
-                if row:
-                    return row[0] if isinstance(row[0], (dict, list)) else {'raw': str(row[0])}
-        except Exception as exc:
-            logger.warning(f'EXPLAIN failed: {exc}')
-        return None
+                if dialect == 'sqlite': stmt = 'EXPLAIN QUERY PLAN ' + sql
+                elif dialect == 'mysql': stmt = 'EXPLAIN FORMAT=JSON ' + sql
+                elif dialect == 'postgresql': stmt = 'EXPLAIN (FORMAT JSON) ' + sql
+                else: return None
+                rows = conn.execute(text(stmt)).fetchmany(100)
+                return {'rows': [list(r) for r in rows]}
+        return await asyncio.to_thread(run)

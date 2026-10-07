@@ -1,25 +1,29 @@
-from pydantic import BaseModel
-from typing import Optional
+from pydantic import BaseModel, Field
+from typing import Optional, Literal
 
 
 class GenerateRequest(BaseModel):
-    nl_query: str
-    schema_context: str
+    nl_query: str = Field(min_length=1, max_length=20000)
+    schema_context: str = ""
     dialect: str = "postgresql"
     query_type: str = "sql"          # "sql" | "nosql"
-    provider: str = "gemini"         # "gemini" | "groq" | "local"
+    provider: Literal['gemini', 'groq', 'openrouter', 'local'] = 'gemini'
     api_key: str = ""                # from VS Code SecretStorage — never stored
     model: Optional[str] = None      # user-configured model override (verbis.llm.*Model)
+    privacy_enabled: bool = True
+    conversation: list[dict] = Field(default_factory=list, max_length=20)
     session_id: Optional[str] = None
     db_config_id: Optional[str] = None
 
 
 class ExecuteRequest(BaseModel):
-    sql: str
+    sql: str = Field(min_length=1, max_length=100000)
     connection_id: str
-    row_limit: int = 500
+    request_id: Optional[str] = None
+    parameters: dict = Field(default_factory=dict)
+    row_limit: int = Field(default=500, ge=1, le=10000)
     read_only: Optional[bool] = None      # None → fall back to Settings.read_only_by_default
-    timeout_seconds: Optional[int] = None  # None → fall back to Settings.execution_timeout_seconds
+    timeout_seconds: Optional[int] = Field(default=None, ge=1, le=600)  # None → fall back to Settings.execution_timeout_seconds
 
 
 class ImpactRequest(BaseModel):
@@ -89,6 +93,11 @@ class RobustnessReport(BaseModel):
 class GlossaryTerm(BaseModel):
     term: str
     sqlTemplate: str
+    connectionId: Optional[str] = None
+    units: dict[str,str] = {}
+    revision: int = 1
+    owner: str = ""
+    lastValidated: str = ""
     aliases: list[str] = []
     description: str = ""
     dialect: str = "postgresql"

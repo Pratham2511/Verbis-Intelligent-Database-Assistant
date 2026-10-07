@@ -1,39 +1,35 @@
 // ============================================================================
 // ConnectionForm.tsx — DB connection form (no password stored here)
 // ============================================================================
-import { useState } from 'react';
-import { postMessage } from '../vscode';
+import { useState, useEffect } from 'react';
+import { request, postMessage, onMessage } from '../vscode';
 
-const DIALECTS = ['postgresql', 'mysql', 'sqlite', 'mssql', 'mongodb'] as const;
+const DIALECTS = ['postgresql', 'mysql', 'sqlite'] as const;
+const emptyForm=()=>({id:'',sslCa:'',name:'',dialect:'postgresql' as typeof DIALECTS[number],host:'localhost',port:5432,database:'',user:'',password:'',ssl:false});
 
-export default function ConnectionForm() {
-  const [form, setForm] = useState({
-    name: '',
-    dialect: 'postgresql' as typeof DIALECTS[number],
-    host: 'localhost',
-    port: 5432,
-    database: '',
-    user: '',
-    password: '',
-    ssl: false,
-  });
-  const [saved, setSaved] = useState(false);
+export default function ConnectionForm({editingConnection}:{editingConnection?:any}) {
+  const [form, setForm] = useState(emptyForm);
+  useEffect(()=>{if(editingConnection)setForm({...editingConnection,password:'',sslCa:editingConnection.sslCa||''})},[editingConnection]);
+  const [saved,setSaved]=useState(false);
+  const [busy,setBusy]=useState(false);
+  const [error,setError]=useState('');
+  const [connections,setConnections]=useState<any[]>([]);
+  useEffect(()=>{const off=onMessage(m=>{if(m.type==='CONNECTIONS_UPDATED')setConnections((m.payload as any).connections)});postMessage('GET_CONNECTIONS',{});return off},[]);
 
-  const submit = () => {
-    if (!form.name || !form.database || !form.user) return;
-    // Send WITHOUT password — password goes through SecretStorage via extension host
-    postMessage('CONNECTION_FORM_SAVE', { ...form, password: '' });
-    if (form.password) {
-      // Password is sent over postMessage to extension host, which stores it in SecretStorage
-      postMessage('STORE_DB_PASSWORD', { name: form.name, password: form.password });
-    }
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const submit = async () => {
+    if (!form.name || !form.database || (form.dialect!=='sqlite'&&!form.user)) return;
+    setBusy(true);setError('');setSaved(false);
+    try {const result=await request('CONNECTION_FORM_SAVE',form);setSaved(true);setForm({...form,id:result.connectionId,password:''});}
+    catch(e){setError((e as Error).message)}finally{setBusy(false)}
   };
+  const remove=async(id:string)=>{setBusy(true);setError('');try{const result=await request('DELETE_CONNECTION',{id});if(result.deleted&&form.id===id){setForm(emptyForm());setSaved(false)}}catch(e){setError((e as Error).message)}finally{setBusy(false)}};
 
   return (
     <div className="p-4 max-w-xl">
-      <h2 className="text-base font-semibold mb-3">Add Database Connection</h2>
+      <button disabled={busy} onClick={()=>{setForm(emptyForm());setSaved(false);setError('')}}>Add another connection</button>
+      {connections.map(c=><div key={c.id} className="flex gap-3 mb-2"><strong>{c.name}</strong><span>{c.dialect}</span><button disabled={busy} onClick={()=>postMessage('SELECT_CONNECTION',{id:c.id})}>Select</button><button disabled={busy} onClick={()=>{setForm({...c,password:'',sslCa:c.sslCa||''});setSaved(false)}}>Edit</button><button disabled={busy} onClick={()=>remove(c.id)}>Delete</button></div>)}
+      {error&&<p role="alert">{error}</p>}
+      <h2 className="text-base font-semibold mb-3">{form.id?'Edit Database Connection':'Add Database Connection'}</h2>
       <p className="text-xs opacity-70 mb-4">
         Passwords are stored in VS Code SecretStorage (backed by the OS keychain).
         They never appear in any file under <code>.qmind/</code>.
@@ -51,13 +47,13 @@ export default function ConnectionForm() {
         <Row label="Dialect">
           <select
             value={form.dialect}
-            onChange={e => setForm({ ...form, dialect: e.target.value as any, port: e.target.value === 'mysql' ? 3306 : e.target.value === 'postgresql' ? 5432 : 1433 })}
+            onChange={e => setForm({ ...form, dialect: e.target.value as any, port: e.target.value === 'mysql' ? 3306 : e.target.value === 'postgresql' ? 5432 : 0, ...(e.target.value==='sqlite'?{user:'',password:'',ssl:false,sslCa:''}:{}) })}
             className="bg-transparent border border-qm-border rounded px-2 py-1"
           >
             {DIALECTS.map(d => <option key={d} value={d}>{d}</option>)}
           </select>
         </Row>
-        <div className="grid grid-cols-2 gap-3">
+        {form.dialect!=='sqlite'&&<div className="grid grid-cols-2 gap-3">
           <Row label="Host">
             <input
               value={form.host}
@@ -73,15 +69,15 @@ export default function ConnectionForm() {
               className="w-full bg-transparent border border-qm-border rounded px-2 py-1"
             />
           </Row>
-        </div>
-        <Row label="Database / Collection">
+        </div>}
+        <Row label="Database / SQLite path">
           <input
             value={form.database}
             onChange={e => setForm({ ...form, database: e.target.value })}
             className="w-full bg-transparent border border-qm-border rounded px-2 py-1"
           />
         </Row>
-        <Row label="User">
+        {form.dialect!=='sqlite'&&<><Row label="User">
           <input
             value={form.user}
             onChange={e => setForm({ ...form, user: e.target.value })}
@@ -103,13 +99,15 @@ export default function ConnectionForm() {
             onChange={e => setForm({ ...form, ssl: e.target.checked })}
           />
         </Row>
+        {form.ssl&&<Row label="CA certificate path (optional; certificates and hostnames are verified)"><input value={form.sslCa} onChange={e=>setForm({...form,sslCa:e.target.value})}/></Row>}
+        </>}
         <div className="flex items-center gap-3 pt-2">
           <button
             onClick={submit}
-            disabled={!form.name || !form.database || !form.user}
+            disabled={busy || !form.name || !form.database || (form.dialect!=='sqlite'&&!form.user)}
             className="bg-qm-accent text-white px-4 py-1 rounded disabled:opacity-50"
           >
-            Save
+            {busy?'Validating…':'Save'}
           </button>
           {saved && <span className="text-qm-good">✓ Saved</span>}
         </div>

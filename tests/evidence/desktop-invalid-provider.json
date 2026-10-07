@@ -1,0 +1,11 @@
+{
+  "host": "Installed VS Code 1.140.0, final packaged extension",
+  "provider": "Gemini",
+  "credential": "Known-invalid public fixture; user-supplied key was not used",
+  "checks": [
+    "No-key request opens actual key-source chooser",
+    "Session-only input resumes pending request",
+    "Actual provider rejection yields actionable No valid API key error"
+  ],
+  "displayedError": "No valid API key for the selected provider. Set API Key or choose a session key and retry."
+}

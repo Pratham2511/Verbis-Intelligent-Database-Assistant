@@ -90,6 +90,7 @@ class VerbisTerminal {
         // Restore the active persisted conversation so chat survives close/reopen.
         // Fail-safe: resolves to 0 when nothing is stored.
         void this.session.restoreLastSession().then(restored => {
+            this.lastSql = this.session.restoredSql ?? this.lastSql;
             if (restored > 0) {
                 this.renderRestoredTranscript();
                 this.writeln(c(ANSI.fgGray, `— Restored your last conversation (${restored} turn${restored === 1 ? '' : 's'}). ` +
@@ -97,7 +98,7 @@ class VerbisTerminal {
                 this.writeln('');
             }
             this.prompt();
-        });
+        }).catch(e => { this.writeln(`Conversation restore failed: ${e.message}`); this.prompt(); });
     }
     /**
      * Render the restored transcript so the user actually sees their prior
@@ -121,6 +122,7 @@ class VerbisTerminal {
         }
         this.writeln('');
     }
+    providerChanged() { this.session.cancel(); this.session.discardSessionKey(); }
     close() {
         this.disposed = true;
         this.session.cancel();
@@ -131,7 +133,9 @@ class VerbisTerminal {
      * Load a recalled SQL statement (from Recent Queries) as the pending
      * executable SQL and show it, so the user can review and /run it directly.
      */
-    recallSql(sql) {
+    recallSql(sql, connectionId, parameters, schemaFingerprint) {
+        if (connectionId)
+            this.session.bindSql(sql, connectionId, schemaFingerprint, parameters);
         this.lastSql = sql;
         this.writeln(c(ANSI.fgGray, 'Recalled query from Recent Queries:'));
         this.writeln(c(ANSI.fgCyan, sql));
@@ -140,55 +144,86 @@ class VerbisTerminal {
         this.prompt();
     }
     // ─── Input handling (keystroke-level, like a real CLI) ─────────────────
+    cursor = 0;
+    escapeBuffer = '';
+    inputHistory = [];
+    historyCursor = 0;
+    redraw() {
+        this.write(`\r${ESC}[2K${PROMPT}${this.inputBuffer}`);
+        const tail = Array.from(this.inputBuffer).length - this.cursor;
+        if (tail)
+            this.write(`${ESC}[${tail}D`);
+    }
     handleInput(data) {
-        if (this.disposed) {
+        if (this.disposed)
             return;
-        }
         for (const ch of data) {
-            // Ctrl+C — cancel in-flight work, or clear the line.
-            if (ch === '') {
-                if (this.session.isBusy) {
-                    this.session.cancel();
-                    this.writeln(`\r\n${c(ANSI.fgYellow, '^C — cancelling…')}`);
-                }
-                else {
-                    this.inputBuffer = '';
-                    this.writeln('\r');
+            if (ch === '\x03') {
+                this.session.cancel();
+                this.inputBuffer = '';
+                this.cursor = 0;
+                this.writeln('^C');
+                if (!this.session.isBusy)
                     this.prompt();
-                }
                 continue;
             }
-            // While busy, ignore everything except Ctrl+C (handled above).
-            if (this.session.isBusy) {
-                if (ch === '\r' || ch === '\n') {
-                    this.writeln(`\r\n${c(ANSI.fgGray, '(working — press Ctrl+C to cancel)')}`);
+            if (ch === ESC || this.escapeBuffer) {
+                this.escapeBuffer += ch;
+                if (this.escapeBuffer === ESC || (this.escapeBuffer.startsWith(ESC + '[') && Array.from(this.escapeBuffer.slice(2)).every(c => '0123456789;'.includes(c))))
+                    continue;
+                const seq = this.escapeBuffer;
+                this.escapeBuffer = '';
+                if (seq === `${ESC}[D`)
+                    this.cursor = Math.max(0, this.cursor - 1);
+                else if (seq === `${ESC}[C`)
+                    this.cursor = Math.min(Array.from(this.inputBuffer).length, this.cursor + 1);
+                else if ([`${ESC}[H`, `${ESC}[1~`].includes(seq))
+                    this.cursor = 0;
+                else if ([`${ESC}[F`, `${ESC}[4~`].includes(seq))
+                    this.cursor = Array.from(this.inputBuffer).length;
+                else if (seq === `${ESC}[3~`) {
+                    const chars = Array.from(this.inputBuffer);
+                    chars.splice(this.cursor, 1);
+                    this.inputBuffer = chars.join('');
                 }
+                else if (seq === `${ESC}[A` || seq === `${ESC}[B`) {
+                    this.historyCursor = Math.max(0, Math.min(this.inputHistory.length, this.historyCursor + (seq.endsWith('A') ? -1 : 1)));
+                    this.inputBuffer = this.inputHistory[this.historyCursor] ?? '';
+                    this.cursor = Array.from(this.inputBuffer).length;
+                }
+                this.redraw();
                 continue;
             }
-            // Enter — submit the line.
             if (ch === '\r' || ch === '\n') {
                 const line = this.inputBuffer;
                 this.inputBuffer = '';
-                this.writeln('\r\n');
+                this.cursor = 0;
+                if (this.session.isBusy) {
+                    if (line.trim() === '/cancel')
+                        this.session.cancel();
+                    else
+                        this.writeln('Working — /cancel or Ctrl+C.');
+                    continue;
+                }
+                if (line.trim())
+                    this.inputHistory.push(line);
+                this.historyCursor = this.inputHistory.length;
+                this.writeln('');
                 void this.evaluate(line);
                 continue;
             }
-            // Backspace (\x7f on most platforms, \b on some).
+            const chars = Array.from(this.inputBuffer);
             if (ch === '\x7f' || ch === '\b') {
-                if (this.inputBuffer.length > 0) {
-                    this.inputBuffer = this.inputBuffer.slice(0, -1);
-                    // Erase last char on screen: move back, write space, move back.
-                    this.write('\b \b');
-                }
-                continue;
+                if (this.cursor > 0)
+                    chars.splice(--this.cursor, 1);
             }
-            // Ignore other control characters (arrows, etc.) conservatively.
-            if (ch < ' ' && ch !== '\t') {
-                continue;
+            else if (ch >= ' ') {
+                chars.splice(this.cursor++, 0, ch);
             }
-            // Regular printable character — echo and buffer.
-            this.inputBuffer += ch;
-            this.write(ch);
+            else
+                continue;
+            this.inputBuffer = chars.join('');
+            this.redraw();
         }
     }
     // ─── Read-Eval-Print Loop ───────────────────────────────────────────────
@@ -204,6 +239,7 @@ class VerbisTerminal {
             return;
         }
         // Regular natural-language turn → existing agent pipeline.
+        this.lastSql = null;
         const reply = await this.session.ask(trimmed);
         this.renderReply(reply);
         this.prompt();

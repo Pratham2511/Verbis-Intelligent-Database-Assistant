@@ -32,13 +32,14 @@ from api.routes.schema import _introspect_schema  # noqa: E402
 
 # ─── 1. SQLite schema discovery ──────────────────────────────────────────────
 class _FakeRAG:
-    def index_schema(self, tables):  # noqa: ANN001
+    def index_schema(self, tables, connection_id='default'):  # noqa: ANN001
         self.tables = tables
 
 
 class _FakeState:
     def __init__(self):
         self.rag = _FakeRAG()
+        self.extra = {}
 
 
 def _make_school_db(tmp_path: Path) -> tuple:
@@ -114,9 +115,22 @@ def test_history_is_bounded(tmp_path):
 
 
 def test_history_fails_safe_on_corrupt_json(tmp_path):
-    (tmp_path / 'history.json').write_text('{not valid json')
+    corrupt = '{not valid json'
+    (tmp_path / 'history.json').write_text(corrupt)
     s = _store(tmp_path)
-    assert s.read_history() == []  # fail-safe, never raises
+    with pytest.raises(RuntimeError, match='preserved'):
+        s.read_history()
+    with pytest.raises(RuntimeError, match='preserved'):
+        s.append_history({'id': 'new'})
+    assert (tmp_path / 'history.json').read_text() == corrupt
+
+
+def test_separate_history_instances_keep_concurrent_writes(tmp_path):
+    from concurrent.futures import ThreadPoolExecutor
+    stores = [_store(tmp_path) for _ in range(4)]
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        list(executor.map(lambda i: stores[i % 4].append_history({'id': str(i)}), range(40)))
+    assert {entry['id'] for entry in stores[0].read_history()} == {str(i) for i in range(40)}
 
 
 def test_history_missing_file_returns_empty(tmp_path):
@@ -182,7 +196,9 @@ def test_empty_schema_cache_is_reintrospected(tmp_path):
     tables = _introspect_schema(engine, qmind, _FakeState())
     assert 'School' in [t['tableName'] for t in tables]
     # After introspection the cache is rewritten with real data.
-    assert 'School' in [t['tableName'] for t in json.loads((qmind / 'schema_cache.json').read_text())]
+    assert json.loads((qmind / 'schema_cache.json').read_text()) == []  # legacy cache is ignored
+    scoped = list(qmind.glob('schema_*.json'))
+    assert any('fingerprint' in json.loads(p.read_text()) for p in scoped)
 
 
 # ─── 5. PII masking must not alter ordinary single-word name values ─────────

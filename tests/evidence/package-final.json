@@ -1,0 +1,14 @@
+{
+  "packageVersion": "1.5.0",
+  "sizeBytes": 2286498,
+  "fileCount": 138,
+  "sha256": "6773be7bb8bbf8f158f20144d9e4e9351d43101517a3f372e6068b036d2c9887",
+  "runtimeFilesCompared": 129,
+  "checks": [
+    "Runtime, webview and backend bytes match final built source",
+    "OpenRouter configuration/free default and README cost boundary included",
+    "Profiles, imported data, caches, tests and credential-shaped values excluded",
+    "Unified panel only; obsolete panels absent"
+  ],
+  "manifestPreservedAcrossUpdateAndReload": true
+}
