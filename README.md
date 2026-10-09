@@ -12,7 +12,7 @@ behavior and outstanding release checks.
    Installation uses pinned dependencies in an isolated environment in VS Code
    global storage. A failed reinstall preserves the previous environment.
 3. Run **Verbis: Open Database Workspace**. Add and validate a SQLite,
-   PostgreSQL or MySQL connection, or import a CSV in **Datasets**.
+   PostgreSQL or MySQL connection in **Settings**, or use **Import CSV**.
 4. Choose the provider in `verbis.llm.provider`: Gemini, Groq, OpenRouter,
    ChatGPT plan sign-in or local Ollama.
    Cloud keys can be securely saved or kept in memory for one assistant session.
@@ -24,21 +24,29 @@ behavior and outstanding release checks.
    logs prompts/outputs for research and restricts use to agentic harnesses; use
    synthetic or nonconfidential requirements when testing it.
    For an eligible ChatGPT Plus/Pro account, choose **Continue with ChatGPT** in
-   **Connections**, sign in in your browser and approve plan usage. Select a
+   **Settings**, sign in in your browser and approve plan usage. Select a
    listed model after connecting. No API key is needed; credentials remain in
    this VS Code window only. Login makes no AI request. Generation uses shared
    plan allowance; disable purchased-credit use in **Manage usage** if desired.
    This development build allows one attempted request initially and requires
    **Allow one more AI request** for each additional attempt, including retries
-   after provider errors. Actual account/inference acceptance remains pending.
-5. Ask in **Analysis**, review the SQL and its connection, then **Run reviewed
-   SQL**. Follow-ups preserve prior query context. Save a named analysis with
+   after provider errors. Real inference acceptance remains pending.
+5. Open **Ask your data**, write a question, choose **Write SQL with AI**, then
+   review the SQL and its database before choosing **Run query**. Follow-ups
+   preserve prior query context. Save a named analysis with
    explicit `:named` parameters and export results or a readable report.
 
 The terminal assistant remains available as **Verbis: Open Assistant**.
 `/run`, `/cancel`, `/reset`, `/history`, `/model` and Ctrl+C are supported.
 Terminal output shows at most 50 rows; the Analysis workspace paginates the
 loaded result. Query result limits are configurable up to 10,000 rows.
+
+**Start** guides first-time setup. The main navigation contains **Start**,
+**Ask your data**, **Import CSV**, **Tables**, and **Settings**. Less common
+workflows are under **More tools**, with names describing what they do.
+Query values, comparison column mappings, and business units have ordinary form
+fields; JSON remains available under **Advanced**. Generating SQL or table designs
+uses AI; running reviewed SQL, importing CSV, and local diagnostic checks do not.
 
 ## Available modules
 

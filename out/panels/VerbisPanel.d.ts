@@ -38,6 +38,7 @@ export declare class VerbisPanel {
     private onMessage;
     postMessage(message: unknown): void;
     /** Push the current connection list to the webview (chat DB selector). */
+    pushProviderSettings(requestId?: string): void;
     pushConnections(): Promise<void>;
     private sendError;
     private getHtml;

@@ -242,9 +242,19 @@ class ChatGPTService {
                 await this.refreshModels().catch(() => vscode.window.showWarningMessage('ChatGPT connected, but models could not be loaded. Use Refresh models before generating.'));
                 const welcomed = this.context.globalState.get('verbis.chatgpt.welcomed', []);
                 if (!welcomed.includes(clientId)) {
-                    await vscode.window.showInformationMessage('You’re using your ChatGPT plan. AI generation uses your allowance; signing in makes no AI request. Credentials last for this VS Code window only.', { modal: true }, 'Got it');
                     await this.context.globalState.update('verbis.chatgpt.welcomed', [...welcomed, clientId]);
+                    // A welcome notice must not keep a successful login in the busy state.
+                    void vscode.window.showInformationMessage('ChatGPT connected. Choose a model in Verbis Settings. AI generation uses your allowance; signing in makes no AI request. Sign in again after restarting VS Code.', 'Manage usage').then(choice => {
+                        if (choice === 'Manage usage')
+                            void vscode.commands.executeCommand('verbis.chatgpt.manageUsage');
+                    });
                 }
+            }
+            // Return the completed state too; otherwise the reply can overwrite the
+            // final event with busy:true and leave model selection disabled.
+            if (this.pending === controller) {
+                this.pending = undefined;
+                this.emit();
             }
             return this.snapshot();
         }

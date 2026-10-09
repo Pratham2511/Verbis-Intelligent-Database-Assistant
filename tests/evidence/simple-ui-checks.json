@@ -1,0 +1,53 @@
+{
+  "controlledFixture": true,
+  "realAIRequests": 0,
+  "navigation": "all 13 pages reachable",
+  "mainNavigationButtons": 5,
+  "keyboard": "skip link moves focus into workspace",
+  "allToolPagesFitAt360": true,
+  "widthsChecked": [
+    1100,
+    480,
+    360
+  ],
+  "parameterTypes": "negative decimal preserved; invalid input blocks execution",
+  "aiBudget": "generation disabled after allowed attempt",
+  "csv": "preview and reviewed import",
+  "glossary": "definition saved without required JSON",
+  "provider": "only selected key visible",
+  "sqlitePicker": "path selection reflected",
+  "pageErrors": [],
+  "date": "2026-10-09",
+  "extensionTestsPassed": 77,
+  "compile": "passed",
+  "lint": "passed",
+  "webviewTypecheck": "passed",
+  "productionBuild": "passed",
+  "package": {
+    "files": 224,
+    "bytes": 2373817,
+    "sha256": "ac8ea0e58f9e35a978583933618636feca943f6d6a3ee9c3eaaf08f9b12b1202",
+    "runtimeMatchesSource": true,
+    "joseRuntimeIncluded": true
+  },
+  "installedVSCode": {
+    "version": "1.140.0",
+    "backendReady": true,
+    "navigation": [
+      "Start",
+      "Ask your data",
+      "Import CSV",
+      "Tables",
+      "Settings"
+    ],
+    "startScreenVerified": true,
+    "realSyntheticCsvPreview": true,
+    "realSyntheticCsvImport": {
+      "rows": 3,
+      "rowIdentifier": "id",
+      "sqlContentsChecked": true,
+      "externalFixtureUnchanged": true
+    },
+    "realAIRequests": 0
+  }
+}

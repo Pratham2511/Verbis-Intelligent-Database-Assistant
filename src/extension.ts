@@ -414,6 +414,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       if (e.affectsConfiguration('verbis.llm.provider')) {
         terminalManager?.providerChanged();VerbisPanel.currentPanel?.providerChanged();
         if(chatgptService)VerbisPanel.currentPanel?.postMessage({type:'CHATGPT_STATUS',payload:chatgptService.snapshot()});
+        VerbisPanel.currentPanel?.pushProviderSettings();
         backendManager?.getClient()?.clearIntentCache()
           ?.then(
             () => { /* cache cleared successfully */ },

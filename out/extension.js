@@ -397,6 +397,7 @@ async function activate(context) {
             VerbisPanel_1.VerbisPanel.currentPanel?.providerChanged();
             if (chatgptService)
                 VerbisPanel_1.VerbisPanel.currentPanel?.postMessage({ type: 'CHATGPT_STATUS', payload: chatgptService.snapshot() });
+            VerbisPanel_1.VerbisPanel.currentPanel?.pushProviderSettings();
             backendManager?.getClient()?.clearIntentCache()
                 ?.then(() => { }, err => console.warn('[Verbis] Intent cache clear failed after provider change:', err));
         }

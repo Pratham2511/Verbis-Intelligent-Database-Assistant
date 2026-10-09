@@ -44,6 +44,7 @@ export default function QueryTreeView() {
   useEffect(() => {
     const nodes: Node[] = Object.values(tree.nodes).map(node => ({
       id: node.id,
+      selected: selectedNodeIds.includes(node.id),
       type: 'default',
       position: computePosition(node, tree),
       data: {
@@ -81,7 +82,7 @@ export default function QueryTreeView() {
 
     setRfNodes(nodes);
     setRfEdges(edges);
-  }, [tree]);
+  }, [tree, selectedNodeIds]);
 
   const onNodesChange = useCallback(
     (changes: NodeChange[]) => setRfNodes(nds => applyNodeChanges(changes, nds)),
@@ -106,31 +107,31 @@ export default function QueryTreeView() {
   const compare=()=>{if(selectedNodeIds.length!==2)return;setComparison(selectedNodeIds.map(id=>{const n=tree.nodes[id];return `${n.nlInput}\nConnection: ${(n as any).connectionId}\n${n.sql}\nStatus: ${n.status}; ${n.executionTimeMs??'not measured'} ms; ${n.rowCount??'not measured'} rows`}).join('\n\nCompared with:\n\n'))};
 
   return (
-    <div className="w-full h-full relative">
+    <section className="workspace-section query-history"><h1>Query history</h1><p className="page-intro">Select one query to copy its branch or mark a useful version. Select two queries to compare their saved SQL and execution details.</p>
       {(comparison||error)&&<div className="p-4"><pre style={{whiteSpace:'pre-wrap'}}>{comparison}</pre><p role="alert">{error}</p></div>}
       {/* Toolbar */}
-      <div className="absolute top-2 left-2 z-10 flex gap-2 bg-[var(--vscode-editorWidget-background)] p-2 rounded border border-qm-border">
+      <div className="workspace-actions">
         <button
           onClick={fork}
           disabled={selectedNodeIds.length !== 1}
           className="text-xs px-2 py-1 border border-qm-border rounded disabled:opacity-30"
         >
-          Fork
+          Copy query branch
         </button>
         <button
           onClick={compare}
           disabled={selectedNodeIds.length !== 2}
           className="text-xs px-2 py-1 border border-qm-border rounded disabled:opacity-30"
         >
-          Compare
+          Compare saved SQL
         </button>
-        <input aria-label="Checkpoint label" placeholder="Checkpoint label" value={label} onChange={e=>setLabel(e.target.value)}/>
+        <input aria-label="Version name" placeholder="Name this version" value={label} onChange={e=>setLabel(e.target.value)}/>
         <button
           onClick={checkpoint}
-          disabled={selectedNodeIds.length !== 1}
+          disabled={selectedNodeIds.length !== 1 || !label.trim()}
           className="text-xs px-2 py-1 border border-qm-border rounded disabled:opacity-30"
         >
-          Checkpoint
+          Mark version
         </button>
         <span className="text-xs opacity-60 ml-2 self-center">
           {selectedNodeIds.length} selected
@@ -138,11 +139,11 @@ export default function QueryTreeView() {
       </div>
 
       {rfNodes.length === 0 ? (
-        <div className="flex items-center justify-center h-full text-xs opacity-60">
-          No queries yet — start chatting to build your query tree.
+        <div className="empty-state">
+          No queries yet. Ask a question in “Ask your data”; its query will appear here.
         </div>
       ) : (
-        <ReactFlow
+        <div className="query-diagram"><ReactFlow
           nodes={rfNodes}
           edges={rfEdges}
           onNodesChange={onNodesChange}
@@ -151,9 +152,9 @@ export default function QueryTreeView() {
         >
           <Background />
           <Controls />
-        </ReactFlow>
+        </ReactFlow></div>
       )}
-    </div>
+    </section>
   );
 }
 

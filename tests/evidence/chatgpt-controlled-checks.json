@@ -30,7 +30,7 @@
     "chatGPTControlsVisible": true,
     "initialBudget": "0/1"
   },
-  "realAuthorization": "pending user browser sign-in",
-  "realInference": "pending; no success claimed",
+  "realAuthorization": "completed in installed VS Code; plan scope and visible model catalog received",
+  "realInference": "paused pending purchased-credit setting confirmation; no ChatGPT inference attempted",
   "tokenPersistence": "extension-host memory only"
 }

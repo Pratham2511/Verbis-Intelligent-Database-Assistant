@@ -33,6 +33,12 @@ function fixture(options:{scope?:string;verifyFails?:boolean;callback?:boolean;w
  return {service,stored,calls,open,verify,callbackStatuses,get authorization(){return authorization!}};
 }
 describe('ChatGPT browser sign-in and test usage boundary (controlled host)',()=>{
+ it('finishes login without waiting for a welcome notice to be dismissed',async()=>{
+  ui.welcome.mockImplementationOnce(()=>new Promise(()=>{}));
+  const f=fixture();const status=await f.service.signIn();
+  expect(status).toMatchObject({connected:true,planEnabled:true,busy:false,requestsUsed:0});
+  expect(f.calls.some(c=>c.url.includes('/responses'))).toBe(false);
+ });
  it('binds PKCE/state/nonce to a loopback callback and exchanges only the issued client ID without inference',async()=>{
   const f=fixture({wrongState:true});const status=await f.service.signIn();
   expect(f.authorization.origin).toBe('https://auth.openai.com');

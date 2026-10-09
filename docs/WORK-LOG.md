@@ -111,10 +111,54 @@ matches the rebuilt runtime source. Installed VS Code 1.140.0 activates it in a
 separate visible profile with a reused verified backend runtime and a synthetic
 SQLite fixture. Connections shows the new controls and 0/1 attempted requests.
 **Continue with ChatGPT** opens the browser and enters the cancellable waiting
-state without an inference request. User authorization and a completed real
-ChatGPT response remain pending; implementation alone does not establish account
+state without an inference request. At that initial checkpoint, user authorization and a completed real
+ChatGPT response were pending; implementation alone does not establish account
 eligibility or real-provider success. Sanitized results are recorded in
 `tests/evidence/chatgpt-controlled-checks.json`.
+
+## Simpler workspace interface — 9 October 2026
+
+The user's installed ChatGPT connection received plan permission and its real
+visible-model catalog, with zero ChatGPT inference attempts. Real inference is
+paused until the user confirms purchased-credit use is disabled. No account
+identity or OAuth credentials are included in evidence.
+
+Replaced the twelve-tab bar with five everyday pages (Start, Ask your data,
+Import CSV, Tables, Settings) and a More tools menu with descriptive action names.
+Start explains the data → AI → question flow. The selected database and remaining
+allowed AI attempts stay visible. AI generation buttons explain allowance use and
+pause when sign-in, model selection, or another allowed attempt is needed.
+
+Settings shows one AI provider and its relevant controls. Provider/model choices
+can be changed there without finding VS Code settings; changing them performs no
+inference. SQLite offers a native file picker. Connection editing is opened only
+when needed. Sign-in, model choice, allowance, credit settings and account details
+have separate, short explanations. N38 fixes the blocking welcome and stale busy
+reply discovered after actual sign-in.
+
+Ask and CSV import use numbered steps. Query values preserve numeric/boolean/NULL
+types in ordinary fields, and invalid numeric drafts block execution. Comparison
+column mappings and business units also use fields; expert JSON editing remains
+available. Business definition editing is inline. Table keys, query-history
+actions, saved analyses, code references, and static predictions have plain labels,
+helpful empty states and visible keyboard focus. Theme colors follow VS Code.
+
+77 extension regressions pass, including login completion without dismissing the
+welcome, invalid provider/model rejection, and value-type preservation. Compile,
+lint and webview type checking pass. Browser fixture checks cover all 13 pages,
+preview/import, reviewed query execution, AI attempt exhaustion, definition saving,
+selected-provider controls and a SQLite picker response. All 13 pages fit at
+360 pixels; the main pages also pass at 480 and 1100 pixels. The keyboard skip
+link moves focus into the workspace. Synthetic browser
+responses are labelled and do not establish real AI or database execution.
+The final VSIX was installed and reloaded in VS Code 1.140.0. The actual renderer
+shows the new navigation and Start screen with the backend ready. Actual CSV
+preview/import passes with three synthetic rows and a selected unique identifier;
+read-only SQLite inspection confirms exact imported values and that the separate
+five-row source fixture remains unchanged. No AI was used. Reload discards the
+window-only OAuth session, so the existing sign-in registration is resumed through
+the browser; real inference still requires the credit-setting confirmation.
+
 
 ## Branch publication hygiene
 

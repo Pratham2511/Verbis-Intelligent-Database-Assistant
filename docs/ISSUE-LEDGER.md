@@ -103,13 +103,17 @@ VS Code 1.140.0; engine = disposable PostgreSQL 17.11 / MySQL 8.4.11.
 
 | N37 | Source investigation found unknown provider names fell back to a Gemini stored key. Explicit known-provider lookup now returns no key for unknown/local providers, and OpenRouter has a separate secret identifier. Provider-isolation/deletion and OpenRouter session/model forwarding regressions pass. |
 
+| N38 | Installed ChatGPT sign-in showed a connected account while model selection remained disabled. The welcome dialog held login open; independently, the returned snapshot was captured before `finally` cleared its busy state and could overwrite the final status event. Make the welcome nonblocking and clear busy before returning. A regression with an undismissed welcome now completes login and returns `busy:false`, with zero inference calls. |
+
 ## Release inputs and limits
 
 - OpenRouter's first installed Analysis call failed with a generic provider error;
   root cause remains undiagnosed and successful OpenRouter inference is pending.
   ChatGPT browser sign-in and SQL/schema Responses integration are implemented
   with controlled OAuth/JWT, stream and one-attempt-budget checks passing. Actual
-  account authorization and completed real inference remain pending. Official
+  account authorization succeeded in installed VS Code: the granted plan scope
+  and real visible-model catalog were received. Completed real inference remains
+  pending the user's purchased-credit setting confirmation. Official
   SIWC documentation lists Plus/Pro and does not list Go as eligible. Existing
   Codex credentials are not reused; tokens remain in extension-host memory.
   Real requests consume plan usage and may use purchased ChatGPT credits if the

@@ -1,6 +1,6 @@
 // ============================================================================
 // RobustnessReport.tsx — Schema evolution test result display
-// Implements Novel Contribution #16 (Schema Evolution Simulationing Suite).
+// Implements Novel Contribution #16 (Predict change impacting Suite).
 // ============================================================================
 import { useState } from 'react';
 import type { RobustnessReport as Report } from '../../../src/types';
@@ -30,27 +30,27 @@ export default function RobustnessReport() {
   };
 
   return (
-    <div className="p-4">
+    <section className="workspace-section">
       <div className="flex justify-between items-center mb-3">
-        <h2 className="text-base font-semibold">Schema Evolution Simulation</h2>
+        <h2 className="text-base font-semibold">Predict change impact</h2>
         <button
           onClick={run}
           disabled={running}
           className="bg-qm-accent text-white text-xs px-3 py-1 rounded disabled:opacity-50"
         >
-          {running ? 'Running…' : 'Run Test'}
+          {running ? 'Running…' : 'Show predictions'}
         </button>
       </div>
 
       <p className="text-xs opacity-70 mb-4">
         Static heuristic simulation over your saved queries. No schema copies or queries are executed.
-        Use Change Rehearsal for measured checks on a disposable SQLite snapshot.
+        Use “Test database changes” under More tools for measured checks on a disposable SQLite snapshot.
       </p>
 
       {error&&<p role="alert">{error}</p>}
       {!report && !running && (
         <p className="text-xs italic opacity-60">
-          Click "Run Test" to inspect static predictions for your saved queries.
+          Click "Show predictions" to inspect static predictions for your saved queries.
         </p>
       )}
 
@@ -74,9 +74,9 @@ export default function RobustnessReport() {
           <table className="w-full text-xs border border-qm-border rounded">
             <thead>
               <tr className="bg-[var(--vscode-editorWidget-background)]">
-                <th className="text-left p-2">Perturbation</th>
+                <th className="text-left p-2">Possible change</th>
                 <th className="text-right p-2">Predicted breakage</th>
-                <th className="text-left p-2">Affected Queries</th>
+                <th className="text-left p-2">Affected saved queries</th>
               </tr>
             </thead>
             <tbody>
@@ -102,6 +102,6 @@ export default function RobustnessReport() {
           </div>
         </>
       )}
-    </div>
+    </section>
   );
 }

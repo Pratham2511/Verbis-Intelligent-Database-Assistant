@@ -35,8 +35,9 @@ has been performed at that checkpoint. Go subscriptions are not listed as
 eligible for SIWC plan-backed inference in the official documentation.
 `chatgpt-controlled-checks.json` records the new controlled checks, verified
 package contents and installed controls/backend. The browser was launched from
-the installed extension; account authorization remains a user action, and real
-inference remains unverified. No login credentials or account identity appear in
+the installed extension. The user subsequently completed account authorization;
+plan scope and the real model catalog were received. Real inference remains
+paused pending purchased-credit setting confirmation and is unverified. No login credentials or account identity appear in
 that evidence.
 
 These final checks used the actual installed VS Code on a private Xvfb display.
@@ -79,3 +80,8 @@ profile or reuse these fixture paths for production.
 The final development package can be rebuilt after any source change. Remaining
 release inputs and unexecuted cases are recorded in docs/ISSUE-LEDGER.md; passing
 controller tests do not establish cross-platform or real-provider acceptance.
+
+`simple-ui-checks.json` records 77 extension tests and labelled browser fixture
+checks for the simplified interface, including all 13 pages at narrow width,
+keyboard focus, parameter types, import preview and provider selection. These
+responses are synthetic and do not consume provider allowance.

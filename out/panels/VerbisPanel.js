@@ -118,7 +118,7 @@ class VerbisPanel {
         return undefined;
     }
     get client() { return this.getClient ? this.getClient() : this.initialClient; }
-    requestedTab = 'connections';
+    requestedTab = 'home';
     requestedConnection;
     editConnection(connection) { this.requestedConnection = connection; this.openTab('connections'); this.postMessage({ type: 'EDIT_CONNECTION', payload: connection }); }
     providerChanged() { this.session.cancel(); this.session.discardSessionKey(); }
@@ -147,7 +147,27 @@ class VerbisPanel {
                     this.postMessage({ type: 'EDIT_CONNECTION', payload: this.requestedConnection });
                 if (this.secrets.chatgpt)
                     this.postMessage({ type: 'CHATGPT_STATUS', payload: this.secrets.chatgpt.snapshot() });
+                this.pushProviderSettings();
                 this.postMessage({ type: 'BACKEND_STATUS', payload: { state: this.client ? 'ready' : 'stopped' } });
+                return;
+            }
+            if (msg.type === 'GET_PROVIDER_SETTINGS' || msg.type === 'UPDATE_PROVIDER_SETTINGS') {
+                if (msg.type === 'UPDATE_PROVIDER_SETTINGS') {
+                    const { provider, model } = msg.payload;
+                    if (!['chatgpt', 'gemini', 'groq', 'openrouter', 'local'].includes(provider))
+                        throw new Error('Choose a listed AI provider.');
+                    const cfg = vscode.workspace.getConfiguration('verbis');
+                    const modelKey = { gemini: 'llm.geminiModel', groq: 'llm.groqModel', openrouter: 'llm.openrouterModel' }[provider];
+                    if (model !== undefined) {
+                        if (!modelKey || typeof model !== 'string' || !model.trim() || model.length > 120)
+                            throw new Error('Enter a model name for the selected provider.');
+                        if (provider === 'openrouter' && !(model.trim().endsWith(':free') || model.trim() === 'openrouter/free'))
+                            throw new Error('Choose an OpenRouter :free model or openrouter/free. Paid models are not allowed.');
+                        await cfg.update(modelKey, model.trim(), vscode.ConfigurationTarget.Workspace);
+                    }
+                    await cfg.update('llm.provider', provider, vscode.ConfigurationTarget.Workspace);
+                }
+                this.pushProviderSettings(msg.requestId);
                 return;
             }
             if (msg.type.startsWith('CHATGPT_')) {
@@ -242,6 +262,11 @@ class VerbisPanel {
                     throw new Error('Source link is outside this workspace.');
                 const doc = await vscode.workspace.openTextDocument(resolved);
                 await vscode.window.showTextDocument(doc, { selection: new vscode.Range(Math.max(0, line - 1), 0, Math.max(0, line - 1), 0) });
+                return;
+            }
+            if (msg.type === 'PICK_DATABASE_FILE') {
+                const files = await vscode.window.showOpenDialog({ canSelectMany: false, filters: { 'SQLite database': ['db', 'sqlite', 'sqlite3'] }, title: 'Choose an existing SQLite database' });
+                this.postMessage({ type: 'WORKSPACE_RESULT', requestId: msg.requestId, payload: files?.[0] ? { path: files[0].fsPath } : { cancelled: true } });
                 return;
             }
             if (msg.type === 'PICK_CSV') {
@@ -462,6 +487,10 @@ class VerbisPanel {
         this.panel.webview.postMessage(message);
     }
     /** Push the current connection list to the webview (chat DB selector). */
+    pushProviderSettings(requestId) {
+        const provider = vscode.workspace.getConfiguration('verbis').get('llm.provider', 'gemini');
+        this.postMessage({ type: 'PROVIDER_SETTINGS', requestId, payload: { provider, model: this.resolveModel(provider) } });
+    }
     async pushConnections() {
         const cfg = await this.workspace.readConfig();
         this.panel.webview.postMessage({

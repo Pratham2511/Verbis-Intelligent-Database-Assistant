@@ -5,8 +5,7 @@ import type {WebviewMessageType} from '../../../src/types';
 
 export default function ChatGPTSettings() {
   const [status, setStatus] = useState<ChatGPTStatus>();
-  const [working, setWorking] = useState(false);
-  const [error, setError] = useState('');
+  const [working, setWorking] = useState(false), [error, setError] = useState('');
   useEffect(() => {
     const off = onMessage(msg => {if (msg.type === 'CHATGPT_STATUS') setStatus(msg.payload as ChatGPTStatus);});
     request('CHATGPT_GET_STATUS', {}).then(setStatus).catch(e => setError(e.message));
@@ -18,33 +17,39 @@ export default function ChatGPTSettings() {
     catch (e) {setError((e as Error).message);}
     finally {setWorking(false);}
   };
-  return <section className="p-4 space-y-3 border-b border-gray-700" aria-label="ChatGPT plan settings">
-    <div className="flex items-center justify-between">
-      <h2 className="text-sm font-semibold">ChatGPT plan</h2>
-      <button onClick={() => act('CHATGPT_MANAGE_USAGE')} className="text-blue-400 text-xs">Manage usage ↗</button>
-    </div>
-    <p className="text-xs text-gray-400">Use an eligible ChatGPT Plus or Pro account. Sign-in opens your browser and makes no AI request.</p>
-    <p className="text-xs text-gray-400">Credentials stay in this VS Code window only. AI generation uses your plan allowance. Start with one request; extra requests require your choice below.</p>
-    <p className="text-xs text-gray-400">ChatGPT may also use purchased credits if your usage settings allow it. Open Manage usage and disable credit use to keep testing within your included allowance.</p>
-    {status?.connected && <p>{status.account} · {status.planEnabled ? 'ChatGPT plan connected' : 'Plan usage not granted'}</p>}
+  const remaining = status ? Math.max(0, status.requestLimit - status.requestsUsed) : 0;
+  return <section className="chatgpt-settings" aria-label="ChatGPT plan settings">
     {error && <p role="alert">{error}</p>}
-    <div className="flex gap-3">
-      <button disabled={working || status?.busy} onClick={() => act('CHATGPT_SIGN_IN')} className="px-3 py-2 rounded bg-white text-black disabled:opacity-40">Continue with ChatGPT</button>
-      {status?.busy && <button onClick={() => request('CHATGPT_CANCEL_LOGIN', {}).catch(e => setError(e.message))}>Cancel sign-in</button>}
-      {status?.connected && <button disabled={working} onClick={() => act('CHATGPT_SIGN_OUT')}>Sign out</button>}
-    </div>
-    {status?.planEnabled && <>
-      <div className="flex gap-3 items-center">
-        <label className="text-sm">ChatGPT model <select aria-label="ChatGPT model" value={status.model ?? ''} disabled={working || status.busy}
-          onChange={e => act('CHATGPT_SELECT_MODEL', {model: e.target.value})} className="bg-gray-900 border border-gray-600 rounded px-2 py-1 ml-2">
-          <option value="" disabled>Choose a model</option>
-          {status.models.map(m => <option key={m.slug} value={m.slug}>{m.name}</option>)}
-        </select></label>
-        <button disabled={working || status.busy} onClick={() => act('CHATGPT_REFRESH_MODELS')}>Refresh models</button>
-      </div>
-      <p className="text-xs">AI requests attempted in this window: {status.requestsUsed} of {status.requestLimit}. Failed attempts count toward this local test limit because they may consume usage. SQL execution does not call AI.</p>
-      <button disabled={working || status.busy || status.requestsUsed < status.requestLimit} onClick={() => act('CHATGPT_ALLOW_REQUEST')}
-        className="text-blue-400 disabled:opacity-40">Allow one more AI request</button>
+    {!status?.planEnabled && <>
+      <p>Sign in with your ChatGPT Plus or Pro account. You do not need an API key.</p>
+      <button disabled={working || status?.busy} onClick={() => act('CHATGPT_SIGN_IN')} className="chatgpt-signin">Continue with ChatGPT</button>
+      {status?.busy && <div className="workspace-actions"><p role="status">Finish sign-in in your browser, then return here.</p><button className="secondary" onClick={() => request('CHATGPT_CANCEL_LOGIN', {}).catch(e => setError(e.message))}>Cancel sign-in</button></div>}
+      {status?.connected && <p>Signed in, but AI access was not approved. Sign in again and choose “Use your ChatGPT plan.”</p>}
+      <p className="help-text">Signing in makes no AI request.</p>
     </>}
+    {status?.planEnabled && <>
+      <p role="status" className="connection-success">ChatGPT connected</p>
+      <label>Choose a model<select aria-label="ChatGPT model" value={status.model ?? ''} disabled={working || status.busy}
+        onChange={e => act('CHATGPT_SELECT_MODEL', {model: e.target.value})}>
+        <option value="" disabled>Choose one model to continue</option>
+        {status.models.map(m => <option key={m.slug} value={m.slug}>{m.name}</option>)}
+      </select></label>
+      {status.busy && <p role="status">Finishing sign-in…</p>}
+      {!status.models.length && <p>Models are not loaded yet. Refresh the list before asking a question.</p>}
+      <button className="secondary" disabled={working || status.busy} onClick={() => act('CHATGPT_REFRESH_MODELS')}>Refresh model list</button>
+      <div className="usage-summary">
+        <strong>{remaining === 0 ? 'AI testing is paused' : `${remaining} AI ${remaining === 1 ? 'attempt' : 'attempts'} available`}</strong>
+        <p>Each AI generation uses one allowed attempt. Running SQL uses none. A failed AI attempt may still use your plan allowance.</p>
+        {remaining === 0 && <button disabled={working || status.busy} onClick={() => act('CHATGPT_ALLOW_REQUEST')}>Allow one more AI attempt</button>}
+      </div>
+    </>}
+    <p className="help-text">AI uses your ChatGPT allowance. Purchased credits may also be used if enabled in your account.</p>
+    <button className="text-button" onClick={() => act('CHATGPT_MANAGE_USAGE')}>Manage usage and credit settings ↗</button>
+    <details><summary>Account and sign-in details</summary>
+      {status?.connected && <p>{status.account}</p>}
+      <p>Verbis keeps sign-in credentials only in this VS Code window. Sign in again after restarting or reloading VS Code.</p>
+      {status?.connected && <div className="workspace-actions"><button className="secondary" disabled={working || status.busy} onClick={() => act('CHATGPT_SIGN_IN')}>Continue with ChatGPT</button>
+        <button className="secondary" disabled={working} onClick={() => act('CHATGPT_SIGN_OUT')}>Sign out</button></div>}
+    </details>
   </section>;
 }

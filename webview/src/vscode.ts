@@ -72,7 +72,7 @@ export function request(type: WebviewMessageType,payload:unknown):Promise<any> {
     // Credential, file and confirmation dialogs wait for the user. The host
     // starts its bounded HTTP timeout after that choice; a second webview
     // clock must not expire the first question while the key prompt is open.
-    const hostOwnsDeadline=['CHATGPT_SIGN_IN','CHATGPT_SIGN_OUT','GENERATE_SQL','SCHEMA_CREATE','SCHEMA_REFINE','SCHEMA_EXECUTE','PICK_CSV','EXPORT_FILE','DELETE_CONNECTION','STORE_API_KEY','CONNECTION_FORM_SAVE'].includes(type);
+    const hostOwnsDeadline=['CHATGPT_SIGN_IN','CHATGPT_SIGN_OUT','GENERATE_SQL','SCHEMA_CREATE','SCHEMA_REFINE','SCHEMA_EXECUTE','PICK_CSV','PICK_DATABASE_FILE','EXPORT_FILE','DELETE_CONNECTION','STORE_API_KEY','CONNECTION_FORM_SAVE'].includes(type);
     let timer:ReturnType<typeof setTimeout>|undefined;
     const off=onMessage(msg=>{if(msg.requestId!==id)return;if(timer)clearTimeout(timer);off();
       if(msg.type==='ERROR')reject(new Error((msg.payload as {message:string}).message));else resolve(msg.payload);
