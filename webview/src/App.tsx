@@ -13,6 +13,8 @@ import { SchemaCreator } from './components/SchemaCreator';
 import RobustnessReport from './components/RobustnessReport';
 import type { BackendStatus } from '../../src/types';
 import { onMessage,postMessage } from './vscode';
+import ChatGPTSettings from './components/ChatGPTSettings';
+import type {ChatGPTStatus} from '../../src/services/ChatGPTService';
 
 type Tab = 'forensics' | 'rehearsal' | 'reconcile' | 'datasets' | 'project' | 'analysis' | 'schema' | 'createdb' | 'tree' | 'glossary' | 'robustness' | 'connections';
 
@@ -22,9 +24,11 @@ export default function App() {
   useEffect(()=>{setVisited(v=>v.includes(activeTab)?v:[...v,activeTab])},[activeTab]);
   const [editingConnection,setEditingConnection]=useState<any>();
   const [backendStatus, setBackendStatus] = useState<BackendStatus>({ state: 'starting' });
+  const [chatgptStatus,setChatgptStatus]=useState<ChatGPTStatus>();
 
   useEffect(() => {
     const off = onMessage(msg => {
+      if(msg.type==='CHATGPT_STATUS')setChatgptStatus(msg.payload as ChatGPTStatus);
       if(msg.type==='EDIT_CONNECTION')setEditingConnection(msg.payload);
       if(msg.type==='OPEN_TAB')setActiveTab((msg.payload as {tab:Tab}).tab);
       if (msg.type === 'BACKEND_STATUS') {
@@ -65,6 +69,10 @@ export default function App() {
           Backend: {backendStatus.state}
         </div>
       </nav>
+      {chatgptStatus?.providerActive && <div className="px-4 py-2 border-b border-qm-border text-xs flex gap-3">
+        <span>{chatgptStatus.planEnabled ? 'Using ChatGPT plan' : 'ChatGPT sign-in required'} · AI attempts {chatgptStatus.requestsUsed}/{chatgptStatus.requestLimit}</span>
+        <button onClick={()=>postMessage('CHATGPT_MANAGE_USAGE',{})} className="text-qm-accent">Manage usage ↗</button>
+      </div>}
 
       {/* Tab content */}
       <div className="flex-1 min-h-0 overflow-auto">
@@ -79,6 +87,7 @@ export default function App() {
         {activeTab === 'robustness' && <RobustnessReport />}
         {activeTab === 'connections' && (
           <>
+            <ChatGPTSettings />
             <ApiKeySettings />
             <ConnectionForm editingConnection={editingConnection}/>
           </>

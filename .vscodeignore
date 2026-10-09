@@ -45,3 +45,8 @@ python_backend/tests/**
 .pytest_cache/**
 webview/package-lock.json
 python_backend/requirements-dev.txt
+
+# Runtime JWT validation dependency; keep dev dependencies excluded.
+!node_modules/jose/package.json
+!node_modules/jose/LICENSE.md
+!node_modules/jose/dist/node/cjs/**

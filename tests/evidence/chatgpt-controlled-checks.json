@@ -1,0 +1,36 @@
+{
+  "date": "2026-10-09",
+  "extension": {
+    "testsPassed": 60,
+    "failed": 0,
+    "scope": "controlled host and local OAuth/JWT fixtures"
+  },
+  "backend": {
+    "testsPassed": 133,
+    "testsSkipped": 12,
+    "failed": 0,
+    "skippedReason": "opt-in live database/TLS services not configured"
+  },
+  "compile": "passed",
+  "lint": "passed",
+  "webviewTypecheck": "passed",
+  "webviewBuild": "passed",
+  "realAIRequests": 0,
+  "package": {
+    "files": 224,
+    "bytes": 2364916,
+    "sha256": "f2b6a92d8124cb20ff6423e55fd152ed3abbf7e1a426f0297c4434e6a7dc4e80",
+    "runtimeMatchesSource": true,
+    "joseRuntimeIncluded": true
+  },
+  "installedVSCode": {
+    "version": "1.140.0",
+    "backendReady": true,
+    "syntheticFixture": true,
+    "chatGPTControlsVisible": true,
+    "initialBudget": "0/1"
+  },
+  "realAuthorization": "pending user browser sign-in",
+  "realInference": "pending; no success claimed",
+  "tokenPersistence": "extension-host memory only"
+}

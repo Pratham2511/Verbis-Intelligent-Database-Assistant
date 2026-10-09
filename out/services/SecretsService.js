@@ -38,6 +38,7 @@ const vscode = __importStar(require("vscode"));
 const crypto = __importStar(require("crypto"));
 class SecretsService {
     context;
+    chatgpt;
     verified = new Map();
     markVerified(provider, key, model) { this.verified.set(this.verificationId(provider, key, model), Date.now()); }
     verifiedAt(provider, key, model) { return this.verified.get(this.verificationId(provider, key, model)); }
@@ -46,8 +47,17 @@ class SecretsService {
     static GROQ_KEY = 'verbis.groqApiKey';
     static OPENROUTER_KEY = 'verbis.openrouterApiKey';
     static DB_PREFIX = 'verbis.db.password.';
-    constructor(context) {
+    constructor(context, chatgpt) {
         this.context = context;
+        this.chatgpt = chatgpt;
+    }
+    async claimProviderRequest(provider, model) {
+        if (provider === 'chatgpt') {
+            if (!this.chatgpt)
+                throw new Error('ChatGPT sign-in is unavailable in this host.');
+            return this.chatgpt.claimRequest(model);
+        }
+        return undefined;
     }
     async storeGeminiKey(key) {
         this.verified.clear();
@@ -105,6 +115,8 @@ class SecretsService {
             .get('llm.provider', 'gemini');
         if (provider === 'local')
             return undefined;
+        if (provider === 'chatgpt')
+            return this.chatgpt?.accessToken();
         if (provider === 'groq')
             return this.getGroqKey();
         if (provider === 'openrouter')

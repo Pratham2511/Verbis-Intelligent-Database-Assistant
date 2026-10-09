@@ -153,6 +153,18 @@
       {
         "command": "verbis.openWorkspace",
         "title": "Verbis: Open Database Workspace"
+      },
+      {
+        "command": "verbis.chatgpt.signIn",
+        "title": "Verbis: Continue with ChatGPT"
+      },
+      {
+        "command": "verbis.chatgpt.signOut",
+        "title": "Verbis: Sign out of ChatGPT"
+      },
+      {
+        "command": "verbis.chatgpt.manageUsage",
+        "title": "Verbis: Manage ChatGPT Usage"
       }
     ],
     "menus": {
@@ -225,10 +237,11 @@
             "gemini",
             "groq",
             "openrouter",
+            "chatgpt",
             "local"
           ],
           "default": "gemini",
-          "description": "LLM provider: Gemini, Groq, OpenRouter free models, or local Ollama."
+          "description": "LLM provider: Gemini, Groq, OpenRouter free models, ChatGPT plan sign-in, or local Ollama."
         },
         "verbis.llm.geminiModel": {
           "type": "string",
@@ -302,5 +315,8 @@
     "eslint": "^8.57.0",
     "typescript": "^5.4.0",
     "vitest": "^1.6.0"
+  },
+  "dependencies": {
+    "jose": "5.10.0"
   }
 }

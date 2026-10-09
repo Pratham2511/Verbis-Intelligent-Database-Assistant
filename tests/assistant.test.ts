@@ -13,6 +13,20 @@ function fixture(){
 }
 beforeEach(()=>{ui.provider='gemini';ui.pick.mockReset();ui.input.mockReset();ui.command.mockReset()});
 describe('assistant acceptance contracts (controlled host)',()=>{
+ it('uses ChatGPT sign-in without an API-key prompt and consumes one host reservation for generation',async()=>{
+  ui.provider='chatgpt';const f=fixture();
+  Object.assign(f.secrets,{chatgpt:{snapshot:()=>({connected:true,planEnabled:true,model:'fixture-model'})},claimProviderRequest:vi.fn(async()=> 'chatgpt-fixture-bearer')});
+  expect((await f.session.ask('employees above 8000')).kind).toBe('sql');
+  expect(ui.pick).not.toHaveBeenCalled();expect(ui.input).not.toHaveBeenCalled();
+  expect((f.secrets as any).claimProviderRequest).toHaveBeenCalledOnce();
+  expect(f.client.generate.mock.calls[0][0]).toMatchObject({provider:'chatgpt',model:'fixture-model',apiKey:'chatgpt-fixture-bearer'});
+ });
+ it('blocks SQL and schema generation before backend calls when the ChatGPT test limit is exhausted',async()=>{
+  ui.provider='chatgpt';const f=fixture();
+  Object.assign(f.secrets,{chatgpt:{snapshot:()=>({connected:true,planEnabled:true,model:'fixture-model'})},claimProviderRequest:vi.fn(async()=>{throw new Error('ChatGPT test request limit reached')})});
+  expect((await f.session.ask('employees')).message).toContain('limit reached');expect(f.client.generate).not.toHaveBeenCalled();
+  const schema=vi.fn();await expect(f.session.withProvider(schema)).rejects.toThrow('limit reached');expect(schema).not.toHaveBeenCalled();
+ });
  it('resumes the first question once after key management',async()=>{const f=fixture();ui.pick.mockResolvedValue({value:'manage'});ui.command.mockImplementation(async()=>f.setKey('valid-fixture-key'));expect((await f.session.ask('employees above 8000')).kind).toBe('sql');expect(f.client.generate).toHaveBeenCalledTimes(1);expect(f.client.generate.mock.calls[0][0].nlInput).toBe('employees above 8000')});
  it('resumes OpenRouter once with its free model and discards its session key on a switch',async()=>{
   ui.provider='openrouter';const f=fixture();ui.pick.mockResolvedValue({value:'session'});ui.input.mockResolvedValueOnce('openrouter-session-fixture').mockResolvedValueOnce('gemini-session-fixture');

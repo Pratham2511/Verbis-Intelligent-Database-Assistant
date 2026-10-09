@@ -7,7 +7,7 @@ class GenerateRequest(BaseModel):
     schema_context: str = ""
     dialect: str = "postgresql"
     query_type: str = "sql"          # "sql" | "nosql"
-    provider: Literal['gemini', 'groq', 'openrouter', 'local'] = 'gemini'
+    provider: Literal['gemini', 'groq', 'openrouter', 'chatgpt', 'local'] = 'gemini'
     api_key: str = ""                # from VS Code SecretStorage — never stored
     model: Optional[str] = None      # user-configured model override (verbis.llm.*Model)
     privacy_enabled: bool = True

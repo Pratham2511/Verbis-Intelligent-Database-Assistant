@@ -75,10 +75,46 @@ open-source clients. Go is not listed as eligible for this integration. The
 access to GPT-6 Luna in the desktop app, subject to rollout; that does not establish
 eligibility for Verbis's direct integration or a CLI test bridge.
 
-No ChatGPT provider has been implemented, no OAuth login has been started and no
-existing Codex account credentials have been reused. Real-provider retests remain
-pending an eligible account/provider. This eligibility limitation is separate
-from the completed backend and extension regression results.
+At that checkpoint no ChatGPT provider or OAuth login had been implemented.
+
+## ChatGPT browser sign-in — 9 October 2026
+
+Implemented the official local open-source token-sharing flow, exposed as
+**Continue with ChatGPT** in Connections and the command palette. Browser login
+uses a loopback callback, PKCE, state and nonce checks, the issued application
+client ID, and signed ID-token verification against OpenAI's published keys.
+OAuth credentials stay in extension-host memory. Only registration identifiers
+and a stable installation identifier persist; existing Codex credentials are not
+reused. Reload requires signing in again. Sign-out discards the local session and
+attempts remote refresh-token revocation.
+
+SQL and schema generation use the account's visible model catalog and streamed
+Responses requests with `store: false`, zero SDK retries, and no API-key fallback.
+Login and model listing make no AI inference request. Generation requires an
+explicit model selection and starts with one attempted request per window; each
+additional attempt requires **Allow one more AI request**. Failed attempts count
+because partial output can consume usage. Incomplete or failed streams are
+discarded rather than treated as valid SQL/schema output.
+
+Real requests consume shared plan allowance. Purchased ChatGPT credits may also
+be used if the account permits them; **Manage usage** opens ChatGPT settings so
+the user can disable credit use. This is a request-count guard, not an account
+billing guarantee. See the official [sign-in flow](https://developers.openai.com/siwc/token-sharing-open-source/sign-in)
+and [models/inference contract](https://developers.openai.com/siwc/token-sharing-open-source/models-and-inference).
+
+Controlled verification passes: 60 extension tests, including actual ephemeral
+JWT signature checks and loopback OAuth fixtures; 133 backend tests pass and 12
+opt-in database integration cases skip because their services are not running.
+Compile, lint, webview type checking and production build pass. These checks make
+no real AI calls. The verified package includes its JWT runtime dependency and
+matches the rebuilt runtime source. Installed VS Code 1.140.0 activates it in a
+separate visible profile with a reused verified backend runtime and a synthetic
+SQLite fixture. Connections shows the new controls and 0/1 attempted requests.
+**Continue with ChatGPT** opens the browser and enters the cancellable waiting
+state without an inference request. User authorization and a completed real
+ChatGPT response remain pending; implementation alone does not establish account
+eligibility or real-provider success. Sanitized results are recorded in
+`tests/evidence/chatgpt-controlled-checks.json`.
 
 ## Branch publication hygiene
 

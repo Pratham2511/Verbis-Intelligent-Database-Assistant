@@ -24,7 +24,7 @@ from services.llm_service import (
 
 
 from services.llm_service import _get_client
-from services.llm_service import generation_options, completion_text
+from services.llm_service import generate_text
 
 
 SCHEMA_SYSTEM_PROMPT = """You are an expert database architect inside Verbis.
@@ -88,17 +88,10 @@ async def generate_schema_from_nl(
     """Convert NL description into structured schema JSON."""
     client, model = _get_client(provider, api_key, model)
     try:
-        r = await client.chat.completions.create(
-            model=model,
-            messages=[
+        raw = await generate_text(client, provider, model, [
                 {"role": "system", "content": SCHEMA_SYSTEM_PROMPT},
                 {"role": "user", "content": f"Dialect: {dialect}\nRequirements:\n{description}\n\nSchema JSON:"},
-            ],
-            temperature=0.1,
-            max_tokens=4096,
-            **generation_options(provider, model),
-        )
-        raw = completion_text(r)
+            ], max_tokens=4096)
         raw = raw.replace("```json", "").replace("```", "").strip()
         return json.loads(raw)
     finally:
@@ -233,21 +226,14 @@ async def refine_schema(
     """Apply a NL refinement request to an existing schema. Returns the COMPLETE updated schema."""
     client, model = _get_client(provider, api_key, model)
     try:
-        r = await client.chat.completions.create(
-            model=model,
-            messages=[
+        raw = await generate_text(client, provider, model, [
                 {"role": "system", "content": SCHEMA_SYSTEM_PROMPT},
                 {"role": "user", "content": (
                     f"Dialect: {dialect}\nExisting schema:\n{json.dumps(existing_schema, indent=2)}\n\n"
                     f"Refinement: {refinement}\n\n"
                     f"Return the COMPLETE updated schema JSON including all existing tables:"
                 )},
-            ],
-            temperature=0.1,
-            max_tokens=4096,
-            **generation_options(provider, model),
-        )
-        raw = completion_text(r)
+            ], max_tokens=4096)
         raw = raw.replace("```json", "").replace("```", "").strip()
         return json.loads(raw)
     finally:

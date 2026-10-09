@@ -13,7 +13,8 @@ behavior and outstanding release checks.
    global storage. A failed reinstall preserves the previous environment.
 3. Run **Verbis: Open Database Workspace**. Add and validate a SQLite,
    PostgreSQL or MySQL connection, or import a CSV in **Datasets**.
-4. Choose the provider in `verbis.llm.provider`: Gemini, Groq, OpenRouter or local Ollama.
+4. Choose the provider in `verbis.llm.provider`: Gemini, Groq, OpenRouter,
+   ChatGPT plan sign-in or local Ollama.
    Cloud keys can be securely saved or kept in memory for one assistant session.
    Local mode requires an OpenAI-compatible Ollama endpoint at
    `127.0.0.1:11434/v1`; it requires no cloud key.
@@ -22,6 +23,14 @@ behavior and outstanding release checks.
    sending a request, and SDK retries are disabled. The [Inkling free endpoint](https://openrouter.ai/thinkingmachines/inkling:free)
    logs prompts/outputs for research and restricts use to agentic harnesses; use
    synthetic or nonconfidential requirements when testing it.
+   For an eligible ChatGPT Plus/Pro account, choose **Continue with ChatGPT** in
+   **Connections**, sign in in your browser and approve plan usage. Select a
+   listed model after connecting. No API key is needed; credentials remain in
+   this VS Code window only. Login makes no AI request. Generation uses shared
+   plan allowance; disable purchased-credit use in **Manage usage** if desired.
+   This development build allows one attempted request initially and requires
+   **Allow one more AI request** for each additional attempt, including retries
+   after provider errors. Actual account/inference acceptance remains pending.
 5. Ask in **Analysis**, review the SQL and its connection, then **Run reviewed
    SQL**. Follow-ups preserve prior query context. Save a named analysis with
    explicit `:named` parameters and export results or a readable report.

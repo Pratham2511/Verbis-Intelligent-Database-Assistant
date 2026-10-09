@@ -61,7 +61,7 @@ export declare class AssistantSession {
     get providerLabel(): string;
     get modelLabel(): string;
     get readOnlyMode(): boolean;
-    get credentialSourceLabel(): "Local (no key)" | "Session-specific key (not saved)" | "Existing configured key" | "Not chosen yet";
+    get credentialSourceLabel(): "ChatGPT plan (this window only)" | "Local (no key)" | "Session-specific key (not saved)" | "Existing configured key" | "Not chosen yet";
     private resolveModel;
     private resolveApiKey;
     ensureCredentialChoice(): Promise<{

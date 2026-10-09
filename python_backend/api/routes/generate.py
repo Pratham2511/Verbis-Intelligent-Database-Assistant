@@ -46,7 +46,9 @@ def _friendly_generation_error(exc: Exception, provider: str = "", model: str = 
     "500 Internal Server Error" — the terminal then shows a cryptic message.
     Instead we return a clean detail string the extension can display directly.
     """
-    from services.llm_service import ProviderConfigurationError
+    from services.llm_service import ProviderConfigurationError, ChatGPTRequestError
+    if isinstance(exc, ChatGPTRequestError):
+        return HTTPException(status_code=exc.status, detail=str(exc))
     if isinstance(exc, ProviderConfigurationError):
         return HTTPException(status_code=422, detail=str(exc))
     msg = str(exc).lower()

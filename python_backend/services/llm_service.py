@@ -60,7 +60,12 @@ def _get_client(
             api_key="not-needed",timeout=60.0,max_retries=0,
             base_url="http://127.0.0.1:11434/v1",
         ), (model or DEFAULT_LOCAL_MODEL)
-    raise ProviderConfigurationError('Unsupported provider; choose Gemini, Groq, OpenRouter or local')
+    elif provider == 'chatgpt':
+        if not api_key or not model:
+            raise ProviderConfigurationError('Continue with ChatGPT and select a model in Verbis Connections first.')
+        return AsyncOpenAI(api_key=api_key,timeout=60.0,max_retries=0,
+                           base_url='https://api.openai.com/v1'), model
+    raise ProviderConfigurationError('Unsupported provider; choose Gemini, Groq, OpenRouter, ChatGPT or local')
 
 
 class ProviderConfigurationError(ValueError):
@@ -69,6 +74,73 @@ class ProviderConfigurationError(ValueError):
 
 class ModelOutputError(ValueError):
     """A completed provider request did not contain usable output."""
+
+
+class ChatGPTRequestError(Exception):
+    def __init__(self, code='', status=502):
+        self.code = code
+        messages = {
+            'subscription_sharing_usage_limit_exceeded': (429, 'ChatGPT usage limit reached. Open Manage usage; no automatic retry was made.'),
+            'subscription_sharing_usage_unavailable': (503, 'ChatGPT usage availability could not be checked. Try later; no automatic retry was made.'),
+            'subscription_sharing_user_not_eligible': (403, 'ChatGPT plan usage is unavailable for this account or workspace.'),
+            'subscription_sharing_unsupported_capability': (400, 'ChatGPT rejected an unsupported capability. No automatic retry was made.'),
+            'subscription_sharing_route_not_supported': (403, 'ChatGPT rejected this inference route.'),
+            'subscription_sharing_invalid_user': (401, 'ChatGPT account could not be validated. Sign in again.'),
+            'chatpass_v2_scope_not_authorized': (403, 'ChatGPT plan permission was not accepted. Review your sign-in grant.'),
+            'chatpass_v2_invalid_authorization_context': (403, 'ChatGPT plan permission was not accepted. Review your sign-in grant.'),
+            'subscription_sharing_user_unavailable': (503, 'ChatGPT account is temporarily unavailable. Try later.'),
+        }
+        fallback = {401: 'ChatGPT authentication failed. Continue with ChatGPT again.',
+                    403: 'ChatGPT permission or policy prevented this request.',
+                    429: 'ChatGPT usage limit reached. Open Manage usage.',
+                    503: 'ChatGPT routing is temporarily unavailable. Try later.'}
+        self.status, message = messages.get(code, (status, fallback.get(status, 'ChatGPT inference failed. No automatic retry was made.')))
+        super().__init__(message + ' Usage settings: https://chatgpt.com/settings/usage')
+
+
+async def generate_text(client, provider, model, messages, max_tokens=2048, temperature=0.1):
+    """One provider request. ChatGPT plan usage only uses streamed Responses."""
+    if provider != 'chatgpt':
+        response = await client.chat.completions.create(model=model, messages=messages,
+            temperature=temperature, max_tokens=max_tokens, **generation_options(provider, model))
+        return completion_text(response)
+    instructions = '\n'.join(m['content'] for m in messages if m['role'] == 'system')
+    inputs = [m for m in messages if m['role'] != 'system']
+    stream = None
+    try:
+        stream = await client.responses.create(model=model, instructions=instructions + '\nReturn the smallest useful answer.',
+            input=inputs, store=False, stream=True)
+        completed = False
+        pieces = []
+        size = 0
+        async for event in stream:
+            if event.type == 'response.output_text.delta':
+                pieces.append(event.delta); size += len(event.delta)
+                if size > 50000: raise ModelOutputError('ChatGPT output exceeded the local response limit. No automatic retry was made.')
+            elif event.type == 'response.failed':
+                error = getattr(event.response, 'error', None)
+                raise ChatGPTRequestError(getattr(error, 'code', '') if error else '')
+            elif event.type == 'error':
+                raise ChatGPTRequestError(getattr(event, 'code', ''))
+            elif event.type == 'response.incomplete':
+                raise ModelOutputError('ChatGPT response was incomplete. No automatic retry was made.')
+            elif event.type == 'response.completed':
+                completed = True
+                if not pieces:
+                    pieces.append(getattr(event.response, 'output_text', '') or '')
+        if not completed:
+            raise ModelOutputError('ChatGPT stream ended before completion. Partial output was discarded; no automatic retry was made.')
+        text = ''.join(pieces).strip()
+        if not text: raise ModelOutputError('ChatGPT completed without usable text. No automatic retry was made.')
+        return text
+    except Exception as exc:
+        if hasattr(exc, 'status_code'):
+            body = getattr(exc, 'body', {})
+            error = body.get('error', body) if isinstance(body, dict) else {}
+            raise ChatGPTRequestError(error.get('code', '') if isinstance(error, dict) else '', exc.status_code) from None
+        raise
+    finally:
+        if stream is not None: await stream.close()
 
 
 def generation_options(provider: str, model: str) -> dict:
@@ -122,20 +194,13 @@ async def generate_sql(
 ) -> str:
     client, model = _get_client(provider, api_key, model)
     try:
-        r = await client.chat.completions.create(
-            model=model,
-            messages=[
+        return await generate_text(client, provider, model, [
                 {"role": "system", "content": SQL_PROMPT},
                 *(conversation or [])[-10:],
                 {"role": "user", "content": (
                     f"Dialect: {dialect}\nSchema:\n{schema_context}\nBusiness definitions:\n{glossary}\n\nQuestion: {nl_query}\n\nSQL:"
                 )},
-            ],
-            temperature=0.1,
-            max_tokens=2048,
-            **generation_options(provider, model),
-        )
-        return completion_text(r)
+            ])
 
     finally:
         await client.close()

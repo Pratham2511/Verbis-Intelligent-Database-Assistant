@@ -63,8 +63,9 @@ class AssistantSession {
     get providerLabel() { return vscode.workspace.getConfiguration('verbis').get('llm.provider', 'gemini'); }
     get modelLabel() { return this.resolveModel() ?? 'default'; }
     get readOnlyMode() { return vscode.workspace.getConfiguration('verbis').get('execution.readOnlyByDefault', true); }
-    get credentialSourceLabel() { return this.providerLabel === 'local' ? 'Local (no key)' : this.credentialSource === 'session' ? 'Session-specific key (not saved)' : this.credentialSource === 'configured' ? 'Existing configured key' : 'Not chosen yet'; }
-    resolveModel() { const c = vscode.workspace.getConfiguration('verbis'); return this.providerLabel === 'local' ? undefined : c.get(`llm.${this.providerLabel}Model`)?.trim() || undefined; }
+    get credentialSourceLabel() { return this.providerLabel === 'chatgpt' ? 'ChatGPT plan (this window only)' : this.providerLabel === 'local' ? 'Local (no key)' : this.credentialSource === 'session' ? 'Session-specific key (not saved)' : this.credentialSource === 'configured' ? 'Existing configured key' : 'Not chosen yet'; }
+    resolveModel() { if (this.providerLabel === 'chatgpt')
+        return this.secrets.chatgpt?.snapshot().model; const c = vscode.workspace.getConfiguration('verbis'); return this.providerLabel === 'local' ? undefined : c.get(`llm.${this.providerLabel}Model`)?.trim() || undefined; }
     async resolveApiKey() { return this.credentialSource === 'session' ? this.sessionApiKey ?? undefined : this.secrets.getActiveApiKey(this.credentialProvider); }
     async ensureCredentialChoice() {
         const provider = this.providerLabel;
@@ -74,6 +75,15 @@ class AssistantSession {
         }
         if (provider === 'local')
             return { ok: true };
+        if (provider === 'chatgpt') {
+            const status = this.secrets.chatgpt?.snapshot();
+            if (!status?.connected || !status.planEnabled)
+                return { ok: false, message: 'Continue with ChatGPT in Verbis Connections and approve Use your ChatGPT plan first.' };
+            if (!status.model)
+                return { ok: false, message: 'Select a ChatGPT model in Verbis Connections before generating.' };
+            this.credentialSource = 'configured';
+            return { ok: true };
+        }
         if (this.credentialSource !== 'unset' && await this.resolveApiKey())
             return { ok: true };
         const configured = await this.secrets.getActiveApiKey(provider).catch(() => undefined);
@@ -152,7 +162,9 @@ class AssistantSession {
             this.history.push({ role: 'user', content: nlInput, timestamp: Date.now() });
             await this.persist();
             const provider = this.providerLabel, model = this.resolveModel();
-            const usedKey = await this.resolveApiKey();
+            const usedKey = await this.secrets.claimProviderRequest?.(provider, model) ?? await this.resolveApiKey();
+            if (controller.signal.aborted)
+                return { kind: 'cancelled', wasCancelled: true };
             if (this.providerLabel !== provider || this.credentialProvider !== provider)
                 throw new Error('Provider changed. Submit again using the selected provider.');
             const res = await client.generate({ nlInput, dbConfigId, sessionId, conversation,
@@ -198,7 +210,7 @@ class AssistantSession {
             const credential = await this.ensureCredentialChoice();
             if (!credential.ok)
                 throw new Error(credential.message);
-            const provider = this.providerLabel, model = this.resolveModel(), apiKey = await this.resolveApiKey() ?? '';
+            const provider = this.providerLabel, model = this.resolveModel(), apiKey = await this.secrets.claimProviderRequest?.(provider, model) ?? await this.resolveApiKey() ?? '';
             if (controller.signal.aborted)
                 throw new Error('Cancelled.');
             if (this.providerLabel !== provider || this.credentialProvider !== provider)

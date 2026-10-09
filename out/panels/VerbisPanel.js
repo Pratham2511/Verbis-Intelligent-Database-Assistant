@@ -145,7 +145,42 @@ class VerbisPanel {
                 this.postMessage({ type: 'OPEN_TAB', payload: { tab: this.requestedTab } });
                 if (this.requestedConnection)
                     this.postMessage({ type: 'EDIT_CONNECTION', payload: this.requestedConnection });
+                if (this.secrets.chatgpt)
+                    this.postMessage({ type: 'CHATGPT_STATUS', payload: this.secrets.chatgpt.snapshot() });
                 this.postMessage({ type: 'BACKEND_STATUS', payload: { state: this.client ? 'ready' : 'stopped' } });
+                return;
+            }
+            if (msg.type.startsWith('CHATGPT_')) {
+                const auth = this.secrets.chatgpt;
+                if (!auth)
+                    throw new Error('ChatGPT sign-in is unavailable.');
+                let result = auth.snapshot();
+                switch (msg.type) {
+                    case 'CHATGPT_GET_STATUS': break;
+                    case 'CHATGPT_SIGN_IN':
+                        result = await vscode.commands.executeCommand('verbis.chatgpt.signIn');
+                        break;
+                    case 'CHATGPT_CANCEL_LOGIN':
+                        auth.cancelSignIn();
+                        break;
+                    case 'CHATGPT_SIGN_OUT':
+                        result = await auth.signOut();
+                        break;
+                    case 'CHATGPT_REFRESH_MODELS':
+                        result = await auth.refreshModels();
+                        break;
+                    case 'CHATGPT_SELECT_MODEL':
+                        result = auth.selectModel(msg.payload.model);
+                        break;
+                    case 'CHATGPT_ALLOW_REQUEST':
+                        result = auth.allowOneMoreRequest();
+                        break;
+                    case 'CHATGPT_MANAGE_USAGE':
+                        await vscode.commands.executeCommand('verbis.chatgpt.manageUsage');
+                        break;
+                    default: throw new Error('Unknown ChatGPT action.');
+                }
+                this.postMessage({ type: 'CHATGPT_STATUS', requestId: msg.requestId, payload: result });
                 return;
             }
             if (msg.type === 'STORE_API_KEY') {

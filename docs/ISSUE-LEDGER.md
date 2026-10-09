@@ -107,9 +107,14 @@ VS Code 1.140.0; engine = disposable PostgreSQL 17.11 / MySQL 8.4.11.
 
 - OpenRouter's first installed Analysis call failed with a generic provider error;
   root cause remains undiagnosed and successful OpenRouter inference is pending.
-  ChatGPT sign-in is not implemented: the official SIWC quickstart lists Plus/Pro
-  for plan-backed inference and does not list Go as eligible.
-  No OAuth login or existing Codex credential reuse was performed.
+  ChatGPT browser sign-in and SQL/schema Responses integration are implemented
+  with controlled OAuth/JWT, stream and one-attempt-budget checks passing. Actual
+  account authorization and completed real inference remain pending. Official
+  SIWC documentation lists Plus/Pro and does not list Go as eligible. Existing
+  Codex credentials are not reused; tokens remain in extension-host memory.
+  Real requests consume plan usage and may use purchased ChatGPT credits if the
+  account allows them. The UI links to usage settings and requires explicit
+  allowance for each extra attempt; no API-key billing fallback exists.
 - Disposable provider key identified as Gemini by the user. Real session-only
   inference passed: salary boundary, IT follow-up, reviewed 9000 glossary and clarification. Initial timeout/schema 422 and final provider rate limit remain recorded; its value is absent from files/evidence. Final successful Analysis clarification after N36 requires available provider quota.
 - Actual employee dataset/connection and salary currency/period remain unknown.

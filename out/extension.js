@@ -56,10 +56,12 @@ const SecretsService_1 = require("./services/SecretsService");
 const SidebarProviders_1 = require("./views/SidebarProviders");
 const AssistantSession_1 = require("./assistant/AssistantSession");
 const TerminalManager_1 = require("./terminal/TerminalManager");
+const ChatGPTService_1 = require("./services/ChatGPTService");
 let backendManager;
 let workspaceService;
 let secretsService;
 let terminalManager;
+let chatgptService;
 async function activate(context) {
     console.info(`[Verbis] Activating ${context.extension.packageJSON.version}…`);
     // ── Auto-install backend on first run (Fix D — Task 2.3) ────────────
@@ -81,7 +83,31 @@ async function activate(context) {
         }
     }));
     // ─── 0. Initialize SecretsService (VS Code SecretStorage) ─────────────
-    secretsService = new SecretsService_1.SecretsService(context);
+    chatgptService = new ChatGPTService_1.ChatGPTService(context);
+    secretsService = new SecretsService_1.SecretsService(context, chatgptService);
+    let authRevision = chatgptService.snapshot().revision;
+    context.subscriptions.push(chatgptService, chatgptService.onDidChange(status => {
+        if (status.revision !== authRevision) {
+            authRevision = status.revision;
+            terminalManager?.providerChanged();
+            VerbisPanel_1.VerbisPanel.currentPanel?.providerChanged();
+        }
+        VerbisPanel_1.VerbisPanel.currentPanel?.postMessage({ type: 'CHATGPT_STATUS', payload: status });
+    }));
+    context.subscriptions.push(vscode.commands.registerCommand('verbis.chatgpt.signIn', async () => {
+        try {
+            const status = await chatgptService.signIn();
+            if (status.planEnabled)
+                await vscode.workspace.getConfiguration('verbis').update('llm.provider', 'chatgpt', vscode.ConfigurationTarget.Workspace);
+            if (workspaceService && secretsService)
+                VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('connections');
+            return status;
+        }
+        catch (error) {
+            await vscode.window.showErrorMessage(error.message);
+            throw error;
+        }
+    }), vscode.commands.registerCommand('verbis.chatgpt.signOut', () => chatgptService.signOut()), vscode.commands.registerCommand('verbis.chatgpt.manageUsage', () => vscode.env.openExternal(vscode.Uri.parse('https://chatgpt.com/settings/usage'))));
     // ─── 1. Determine workspace root ────────────────────────────────────
     const workspaceFolders = vscode.workspace.workspaceFolders;
     if (!workspaceFolders || workspaceFolders.length === 0) {
@@ -369,6 +395,8 @@ async function activate(context) {
         if (e.affectsConfiguration('verbis.llm.provider')) {
             terminalManager?.providerChanged();
             VerbisPanel_1.VerbisPanel.currentPanel?.providerChanged();
+            if (chatgptService)
+                VerbisPanel_1.VerbisPanel.currentPanel?.postMessage({ type: 'CHATGPT_STATUS', payload: chatgptService.snapshot() });
             backendManager?.getClient()?.clearIntentCache()
                 ?.then(() => { }, err => console.warn('[Verbis] Intent cache clear failed after provider change:', err));
         }
@@ -383,6 +411,7 @@ async function activate(context) {
 async function deactivate() {
     console.info('[Verbis] Deactivating extension…');
     await backendManager?.stop();
+    chatgptService?.dispose();
 }
 // Generic sanity check only — no provider-specific prefix validation.
 // Keys from any provider (Gemini, Claude, Kimi, OpenAI, …) are accepted.

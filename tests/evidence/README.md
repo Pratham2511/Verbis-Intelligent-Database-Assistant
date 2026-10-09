@@ -1,6 +1,7 @@
 # Verification evidence — 7–8 October 2026
 
-Baseline code: 77b1422 (1.4.0). Development code: repair/verified-workflows (1.5.0).
+Baseline code: 77b1422 (1.4.0). Development branch:
+work/verbis-1.5-verified-workflows (1.5.0).
 `baseline-backend.json` and `baseline-suite.txt` record independent original-code
 probes. `current-backend.txt` and `current-extension.txt` record current suites.
 Desktop JSON/images come from the user's installed VS Code 1.140.0 in disposable
@@ -26,9 +27,17 @@ Gemini/Groq credential-source prompts; it does not claim Groq inference.
 
 desktop-openrouter-final.json records the single real OpenRouter Inkling call in
 installed Analysis. It returned a generic provider failure; the cause is not
-diagnosed and no positive inference acceptance is claimed. ChatGPT OAuth has not
-been implemented or tested; Go subscriptions are not listed
-as eligible for SIWC plan-backed inference in the official documentation.
+diagnosed and no positive inference acceptance is claimed. ChatGPT browser sign-in
+and SQL/schema Responses integration were implemented on 9 October. Controlled
+OAuth/JWT, request-budget and stream-completion tests pass (60 extension tests;
+133 backend tests pass, 12 opt-in engine cases skip). No real ChatGPT inference
+has been performed at that checkpoint. Go subscriptions are not listed as
+eligible for SIWC plan-backed inference in the official documentation.
+`chatgpt-controlled-checks.json` records the new controlled checks, verified
+package contents and installed controls/backend. The browser was launched from
+the installed extension; account authorization remains a user action, and real
+inference remains unverified. No login credentials or account identity appear in
+that evidence.
 
 These final checks used the actual installed VS Code on a private Xvfb display.
 That final profile reused an already verified extension runtime; clean-installer

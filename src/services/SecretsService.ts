@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
+import {ChatGPTService} from './ChatGPTService';
 
 export class SecretsService {
     private verified=new Map<string,number>();
@@ -11,7 +12,15 @@ export class SecretsService {
     private static readonly OPENROUTER_KEY = 'verbis.openrouterApiKey';
     private static readonly DB_PREFIX  = 'verbis.db.password.';
 
-    constructor(private readonly context: vscode.ExtensionContext) {}
+    constructor(private readonly context: vscode.ExtensionContext, readonly chatgpt?: ChatGPTService) {}
+
+    async claimProviderRequest(provider: string, model?: string): Promise<string | undefined> {
+        if (provider === 'chatgpt') {
+            if (!this.chatgpt) throw new Error('ChatGPT sign-in is unavailable in this host.');
+            return this.chatgpt.claimRequest(model);
+        }
+        return undefined;
+    }
 
     async storeGeminiKey(key: string): Promise<void> {
         this.verified.clear();
@@ -69,6 +78,7 @@ export class SecretsService {
             .getConfiguration('verbis')
             .get<string>('llm.provider', 'gemini');
         if (provider === 'local') return undefined;
+        if (provider === 'chatgpt') return this.chatgpt?.accessToken();
         if (provider === 'groq') return this.getGroqKey();
         if (provider === 'openrouter') return this.getOpenRouterKey();
         if (provider === 'gemini') return this.getGeminiKey();

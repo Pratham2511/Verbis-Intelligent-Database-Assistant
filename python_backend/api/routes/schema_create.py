@@ -27,7 +27,7 @@ async def while_connected(request, operation):
 class SchemaCreateRequest(BaseModel):
     description: str = Field(min_length=1,max_length=20000)
     dialect: Literal['postgresql','mysql','sqlite'] = 'postgresql'
-    provider: Literal['gemini','groq','openrouter','local'] = 'gemini'
+    provider: Literal['gemini','groq','openrouter','chatgpt','local'] = 'gemini'
     api_key: str = ""
     model: Optional[str] = None
 
@@ -36,7 +36,7 @@ class SchemaRefineRequest(BaseModel):
     existing_schema: dict
     refinement: str = Field(min_length=1,max_length=20000)
     dialect: Literal['postgresql','mysql','sqlite'] = 'postgresql'
-    provider: Literal['gemini','groq','openrouter','local'] = 'gemini'
+    provider: Literal['gemini','groq','openrouter','chatgpt','local'] = 'gemini'
     api_key: str = ""
     model: Optional[str] = None
 

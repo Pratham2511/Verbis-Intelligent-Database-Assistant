@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
+import { ChatGPTService } from './ChatGPTService';
 export declare class SecretsService {
     private readonly context;
+    readonly chatgpt?: ChatGPTService | undefined;
     private verified;
     markVerified(provider: string, key: string, model: string): void;
     verifiedAt(provider: string, key: string, model: string): number | undefined;
@@ -9,7 +11,8 @@ export declare class SecretsService {
     private static readonly GROQ_KEY;
     private static readonly OPENROUTER_KEY;
     private static readonly DB_PREFIX;
-    constructor(context: vscode.ExtensionContext);
+    constructor(context: vscode.ExtensionContext, chatgpt?: ChatGPTService | undefined);
+    claimProviderRequest(provider: string, model?: string): Promise<string | undefined>;
     storeGeminiKey(key: string): Promise<void>;
     getGeminiKey(): Promise<string | undefined>;
     deleteGeminiKey(): Promise<void>;
