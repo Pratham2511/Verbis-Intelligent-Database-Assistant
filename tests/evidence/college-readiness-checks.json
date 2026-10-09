@@ -1,0 +1,37 @@
+{
+  "date": "2026-10-09",
+  "auditedSourceCommit": "1bc9fddb7f58c180c7c835f69f4b86c859733023",
+  "sourceReview": "Wired commands, panels, workspace/provider routes, six module services, safety/privacy, regression cases and package/workflow/documentation boundaries",
+  "realAIRequests": 0,
+  "freshDesktopAcceptance": false,
+  "desktopEvidence": "Previously captured installed VS Code results reviewed; not all rerun in this audit",
+  "extension": {"passed": 77, "failed": 0, "suites": 12, "seconds": 4.38, "scope": "Controlled hosts and local OAuth/JWT fixtures"},
+  "backend": {"passed": 133, "skipped": 12, "failed": 0, "seconds": 39.43, "skippedReason": "Opt-in live engine services not configured for this local run"},
+  "compile": "passed",
+  "lint": "passed",
+  "webviewTypecheck": "passed",
+  "initialRestrictedAttempts": "Extension OAuth callback fixtures could not bind localhost; backend run interrupted after making no progress. Reruns with fixture access passed.",
+  "githubVerification": {
+    "runId": 37932735837,
+    "url": "https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant/actions/runs/37932735837",
+    "headSha": "1bc9fddb7f58c180c7c835f69f4b86c859733023",
+    "conclusion": "success",
+    "backendPythonVersions": ["3.11", "3.12", "3.13"],
+    "eachBackendJob": {"passed": 133, "skipped": 12},
+    "extensionTests": 77,
+    "extensionBuildAndPackage": "passed",
+    "postgresMySQL": {"passed": 10, "skipped": 2, "skippedReason": "TLS fixture paths not configured in CI"}
+  },
+  "roadmapCounting": "Fully implemented First implementation bullets only, equally weighted; partial bullets excluded. This is capability inventory, not effort, quality, accuracy or test coverage.",
+  "roadmapCounts": {
+    "dataset": [6, 7],
+    "projectNavigator": [5, 7],
+    "analysis": [8, 8],
+    "forensics": [4, 6],
+    "rehearsal": [4, 7],
+    "reconciliationFirstSlice": [7, 7],
+    "laterSQLTestLab": [0, 6]
+  },
+  "newOpenObservations": ["N39: stale contributor documentation", "N40: unverified legacy tag publication workflow"],
+  "realChatGPTInference": "Pending under existing usage-setting condition"
+}

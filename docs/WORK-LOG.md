@@ -19,8 +19,8 @@ source-only diff whitespace checks pass.
 |---|---|
 | Original backend suite | 56 passed, 26.74 seconds |
 | Independent original safety/data probes | Reproduced nested-write acceptance, UNION rejection, negative row-limit acceptance, numeric/department masking and missed sixth-row email |
-| Current backend suite | 138 passed, 45.06 seconds; Python 3.13.5 |
-| Current extension suite | 46 passed across nine suites, including controller, connection transactions, transport/persistence, PTY input, subprocess lifecycle, exports, slow-dialog webview deadlines, DDL acknowledgements and provider secret isolation; controlled hosts |
+| Backend suite before ChatGPT additions | 138 passed, 45.06 seconds; Python 3.13.5; local real-engine fixtures enabled |
+| Extension suite before ChatGPT/UI additions | 46 passed across nine suites, including controller, connection transactions, transport/persistence, PTY input, subprocess lifecycle, exports, slow-dialog webview deadlines, DDL acknowledgements and provider secret isolation; controlled hosts |
 | Build | TypeScript compile, webview typecheck, ESLint and production webview build pass |
 | Real engines | PostgreSQL 17.11 and MySQL 8.4.11, disposable loopback databases; named parameters, bounded results, read-only transactions, set operations, timeout/cancel, generated DDL/index and verified TLS/hostname failures |
 | Installed VS Code | 1.140.0, commit 07f806f999227108933c2e30515b26eecc1fda74; isolated profiles, real Electron renderer and extension host |
@@ -159,6 +159,30 @@ five-row source fixture remains unchanged. No AI was used. Reload discards the
 window-only OAuth session, so the existing sign-in registration is resumed through
 the browser; real inference still requires the credit-setting confirmation.
 
+
+## College scope audit — 9 October 2026
+
+The user revised the objective to a manageable college project for approximately
+two months, rather than completion of every long-term roadmap expansion.
+[COLLEGE-READINESS-AUDIT.md](COLLEGE-READINESS-AUDIT.md) inventories the wired
+features, counts original checklist items separately from verification, identifies
+unconnected legacy services, and recommends a finite seven-requirement finish
+line. No additional product feature or provider call was made for this audit.
+
+Fresh source checks pass: 77 extension tests (12 suites, 4.38 seconds), 133 backend
+tests (12 live-engine cases skipped, 39.43 seconds), compile, lint and webview
+typecheck. Local fixture access was required: the initial sandbox extension run
+could not bind OAuth callbacks and the sandbox backend run was interrupted after
+making no progress. The reruns with fixture access passed.
+
+Remote CI is now confirmed, superseding earlier pending-CI notes. For source
+`1bc9fddb7f58c180c7c835f69f4b86c859733023`,
+[Verify Verbis run 37932735837](https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant/actions/runs/37932735837)
+passed all five jobs: Python 3.11/3.12/3.13 (133 passed, 12 skipped each), extension
+build/test/typecheck/package (77 tests), and PostgreSQL/MySQL integration (10
+passed, 2 TLS cases skipped). Desktop OS/keyring and real ChatGPT inference checks
+remain distinct and pending. N39/N40 record stale contributor documentation and
+the unverified legacy tag-publishing workflow; neither was changed in this audit.
 
 ## Branch publication hygiene
 

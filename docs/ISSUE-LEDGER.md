@@ -104,6 +104,8 @@ VS Code 1.140.0; engine = disposable PostgreSQL 17.11 / MySQL 8.4.11.
 | N37 | Source investigation found unknown provider names fell back to a Gemini stored key. Explicit known-provider lookup now returns no key for unknown/local providers, and OpenRouter has a separate secret identifier. Provider-isolation/deletion and OpenRouter session/model forwarding regressions pass. |
 
 | N38 | Installed ChatGPT sign-in showed a connected account while model selection remained disabled. The welcome dialog held login open; independently, the returned snapshot was captured before `finally` cleared its busy state and could overwrite the final status event. Make the welcome nonblocking and clear busy before returning. A regression with an undismissed welcome now completes login and returns `busy:false`, with zero inference calls. |
+| N39 | Open — documentation mismatch, source-confirmed on 9 October at 1bc9fdd. CONTRIBUTING.md describes persistent encrypted privacy maps/salts, customizable masking rules and plan similarity that are not the active user workflow; development/debug examples are stale. Correct contributor documentation before submission. No runtime reproduction or implementation change is claimed. |
+| N40 | Open — release tooling review, source-confirmed on 9 October at 1bc9fdd. Legacy tag-triggered publish.yml uses Node 20, unlocked installs and a globally installed publisher, unlike verified Node 24 packaging, and does not run the complete checks before publishing. That publishing route is unverified. No tag or Marketplace release attempted. A verified VSIX is sufficient for the narrowed college scope; repair this workflow only before using it. |
 
 ## Release inputs and limits
 
@@ -125,7 +127,15 @@ VS Code 1.140.0; engine = disposable PostgreSQL 17.11 / MySQL 8.4.11.
   All salary acceptance so far uses the explicitly labelled synthetic fixture.
 - KDE has no working OS keyring. Persisted SecretStorage save/reload remains
   pending; session-only flow exists. No plaintext password-store override used.
-- Windows/macOS, Python 3.11/3.12 and remote CI are not yet executed here.
+- Windows/macOS desktop acceptance remains unexecuted. Remote Ubuntu CI is now
+  verified for Python 3.11/3.12/3.13, extension tests/build/package and real
+  PostgreSQL/MySQL integration. Run 37932735837 passed for source 1bc9fdd;
+  its engine job skipped two TLS cases. This does not verify desktop installers
+  on those platforms/interpreters or OS SecretStorage.
 - Broader roadmap slices remain: Excel, additional ORMs, selected-group aggregate
   diagnostics, application-test execution and richer migration transformations,
   view/application dependency previews, PDF/scanned sources and later SQL Test Lab.
+
+The user's 9 October college-project scope supersedes automatic expansion of the
+broader roadmap. See [COLLEGE-READINESS-AUDIT.md](COLLEGE-READINESS-AUDIT.md) for
+the finite recommended submission requirements and intentionally deferred work.
