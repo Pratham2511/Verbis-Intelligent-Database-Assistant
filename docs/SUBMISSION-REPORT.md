@@ -82,6 +82,16 @@ engines and installed VS Code checks are recorded separately. [The work
 log](WORK-LOG.md) is the authoritative dated result record; earlier passes are
 not relabelled as current tests.
 
+The 18 October checkpoint passes 88 local extension tests and 135 backend tests
+(12 opt-in engine cases skipped). GitHub separately passes the backend suite on
+Python 3.11/3.12/3.13, extension build/package and PostgreSQL/MySQL integration
+(10 passed, two TLS cases skipped). Installed Plus testing uses three real
+requests for unit clarification, threshold SQL and an IT follow-up, returning
+the expected rows. One additional Gemini request through the final installed
+backend also passes exact threshold execution. Manual installed CSV, saved
+analysis, chart and report checks are recorded with their runtime/profile limits
+in [the current evidence](../tests/evidence/college-implementation-checks.json).
+
 ## Deliverables and demonstration
 
 Use [the five-minute guide](DEMO-GUIDE.md). Deliver the verified VSIX, source,

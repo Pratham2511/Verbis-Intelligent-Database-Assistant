@@ -40,6 +40,15 @@ or a product failure. The corrected probe captured clarification and both exact
 execution results. No fourth request was made. The user later requested Gemini
 setup after its quota reset; no key was reused from chat or embedded in fixtures.
 
+The user subsequently supplied a new disposable Gemini key. One request through
+the final installed backend's real ASGI generation endpoint, with Privacy Shield
+enabled and `gemini-3.6-flash`, returned schema-validated SQL binding threshold
+8000. The real execution endpoint returned exactly Cara/8001/Finance and
+Dev/12000/IT; source database bytes were unchanged. Hidden terminal input kept
+the key in process memory, logging was suppressed, and there were no retries.
+The process exited and the user was told the key could be revoked. This is a
+real-provider backend retest, not a new installed-UI or browser-auth acceptance.
+
 An actual cold backend import exceeded the old ten-second startup deadline and
 became healthy afterward while the app remained crashed. Manual Restart Backend
 recovered it. N45 raises the bounded deadline to 45 seconds, cleans an unready
@@ -64,12 +73,21 @@ no scripted native input was sent. A screenshot shows the actual result rows.
 
 Automatic approval rejected reopening the old authenticated debug profile. The
 safe replacement copied no authentication storage and used a new account-free
-profile. Debugging was closed before normal Gemini key entry; the optional
-one-request Gemini retest does not block the already-passing Plus acceptance.
+profile. Debugging was closed before normal Gemini key entry. The subsequent
+single Gemini backend request is recorded separately above.
 Credentialed profiles, runtime environments, databases, raw logs and keys remain
 ignored. `main` is preserved at the original baseline; only the development
 branch is intended for publication. OS keyring, Windows/macOS desktop, optional
 provider acceptance and the legacy Marketplace workflow remain unverified.
+
+Implementation commit `ed5fd51dd84a6b466acaf940d489877f94aa1f95` was pushed to
+the development branch. [GitHub verification run 39133121287](https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant/actions/runs/39133121287)
+passed all five jobs: Python 3.11/3.12/3.13 each 135 passed / 12 skipped,
+88 extension tests plus compile/lint/typecheck/build and 224-entry VSIX packaging,
+and PostgreSQL/MySQL integration 10 passed / 2 TLS cases skipped. The final
+checkpoint only updates documentation/evidence; code and runtime files are
+unchanged after that verified commit. The working tree and remote main are
+checked after publication. No tag or Marketplace release is created.
 
 ## Historical implementation record
 

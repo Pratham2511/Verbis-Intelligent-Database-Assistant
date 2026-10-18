@@ -130,15 +130,16 @@ VS Code 1.140.0; engine = disposable PostgreSQL 17.11 / MySQL 8.4.11.
   account allows them. The UI links to usage settings and requires explicit
   allowance for each extra attempt; no API-key billing fallback exists.
 - Disposable provider key identified as Gemini by the user. Real session-only
-  inference passed: salary boundary, IT follow-up, reviewed 9000 glossary and clarification. Initial timeout/schema 422 and final provider rate limit remain recorded; its value is absent from files/evidence. The final Analysis clarification path has now passed using Plus; Gemini-specific retry is optional and was not silently relabelled a pass.
+  inference passed: salary boundary, IT follow-up, reviewed 9000 glossary and clarification. Initial timeout/schema 422 and final provider rate limit remain recorded; its value is absent from files/evidence. The final Analysis clarification path has now passed using Plus. On 18 October one new-key Gemini request through the final installed backend also passed schema validation and exact threshold execution with Privacy Shield enabled, no retries and unchanged source data. This did not repeat the whole Gemini desktop matrix.
 - Actual employee dataset/connection and salary currency/period remain unknown.
   All salary acceptance so far uses the explicitly labelled synthetic fixture.
 - KDE has no working OS keyring. Persisted SecretStorage save/reload remains
   pending; session-only flow exists. No plaintext password-store override used.
 - Windows/macOS desktop acceptance remains unexecuted. Remote Ubuntu CI is now
   verified for Python 3.11/3.12/3.13, extension tests/build/package and real
-  PostgreSQL/MySQL integration. Run 37932735837 passed for source 1bc9fdd;
-  its engine job skipped two TLS cases. This does not verify desktop installers
+  PostgreSQL/MySQL integration. Run 39133121287 passed for source ed5fd51:
+  each Python job 135 passed / 12 skipped, extension 88 passed and packaged,
+  engine job 10 passed / two TLS cases skipped. This does not verify desktop installers
   on those platforms/interpreters or OS SecretStorage.
 - Broader roadmap slices remain: Excel, additional ORMs, selected-group aggregate
   diagnostics, application-test execution and richer migration transformations,

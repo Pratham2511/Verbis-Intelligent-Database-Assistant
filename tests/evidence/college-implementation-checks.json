@@ -183,8 +183,10 @@
   },
   "publication": {
     "branch": "work/verbis-1.5-verified-workflows",
+    "implementationCommit": "ed5fd51dd84a6b466acaf940d489877f94aa1f95",
+    "status": "Implementation committed and pushed; this final checkpoint changes documentation/evidence only",
     "mainConfirmedUnchanged": "77b1422fcac2e205cd6d5ef39c0df94a4b2b3cb5",
-    "status": "awaiting final commit/push"
+    "marketplaceRelease": false
   },
   "remainingLimits": [
     "OS SecretStorage persistence in a working keyring",
@@ -212,8 +214,71 @@
     "realAIRequests": 0
   },
   "geminiFollowup": {
-    "status": "Prepared in a normal VS Code window without debugging; awaiting user key entry for one optional retest",
-    "newRequestsMadeByAgent": 0
+    "date": "2026-10-18",
+    "provider": "Gemini",
+    "model": "gemini-3.6-flash",
+    "realProviderRequests": 1,
+    "automaticRetries": 0,
+    "synthetic": true,
+    "scope": "Real installed-backend ASGI endpoints; no new VS Code UI or OAuth acceptance claimed",
+    "privacyEnabled": true,
+    "generateHttpStatus": 200,
+    "sql": "SELECT \"id\", \"name\", \"salary\", \"department\" FROM \"employees\" WHERE \"salary\" > :threshold ORDER BY \"id\" ASC LIMIT 100",
+    "parameters": {
+      "threshold": 8000
+    },
+    "schemaValidated": true,
+    "executeHttpStatus": 200,
+    "rows": [
+      {
+        "id": 3,
+        "name": "Cara",
+        "salary": 8001,
+        "department": "Finance"
+      },
+      {
+        "id": 4,
+        "name": "Dev",
+        "salary": 12000,
+        "department": "IT"
+      }
+    ],
+    "correct": true,
+    "sourceUnchanged": true
   },
-  "screenshot": "college-manual-desktop.png: actual account-free installed workspace, synthetic rows"
+  "screenshot": "college-manual-desktop.png: actual account-free installed workspace, synthetic rows",
+  "codeVerificationCommit": "ed5fd51dd84a6b466acaf940d489877f94aa1f95",
+  "githubVerification": {
+    "runId": 39133121287,
+    "url": "https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant/actions/runs/39133121287",
+    "headSha": "ed5fd51dd84a6b466acaf940d489877f94aa1f95",
+    "conclusion": "success",
+    "jobsPassed": 5,
+    "backendPythonVersions": [
+      "3.11",
+      "3.12",
+      "3.13"
+    ],
+    "eachBackendJob": {
+      "passed": 135,
+      "skipped": 12
+    },
+    "extensionTestsPassed": 88,
+    "extensionCompileLintTypecheckBuildPackage": "passed",
+    "packageEntries": 224,
+    "postgresMySQL": {
+      "passed": 10,
+      "skipped": 2,
+      "skippedReason": "TLS fixture paths not configured in CI; earlier actual local TLS evidence remains separate"
+    }
+  },
+  "privacyAudit": {
+    "gitFilesChecked": 298,
+    "credentialPatternFindings": 0,
+    "unsafePaths": 0,
+    "personalPaths": 0,
+    "implementationCommitsSinceMainScanned": 5,
+    "historyCredentialPatternFindings": 0,
+    "newGeminiKeyHandling": "Hidden terminal input; memory only; no key files, request logs or automatic retries. Process exited after one request."
+  }
 }

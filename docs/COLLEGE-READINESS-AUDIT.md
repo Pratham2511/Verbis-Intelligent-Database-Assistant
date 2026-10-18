@@ -25,6 +25,11 @@ superseded by this checkpoint and [the current work log](WORK-LOG.md).
 
 Final package/desktop/publication status is recorded in
 [college-implementation-checks.json](../tests/evidence/college-implementation-checks.json).
+The narrowed implementation is now pushed at `ed5fd51`; all five jobs in
+[run 39133121287](https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant/actions/runs/39133121287)
+pass. One subsequent Gemini request through the installed backend also produces
+the exact expected threshold rows. Final installed CSV/unit/save/export checks
+pass, and a verified VSIX plus committed-source submission bundle is prepared.
 Windows/macOS acceptance, OS keyring persistence, optional providers and the
 legacy Marketplace publisher remain separate limits. The original roadmap
 percentages have not been inflated to imply those checks passed.
