@@ -13,6 +13,32 @@ function fixture(){
 }
 beforeEach(()=>{ui.provider='gemini';ui.pick.mockReset();ui.input.mockReset();ui.command.mockReset()});
 describe('assistant acceptance contracts (controlled host)',()=>{
+ it('runs manually written SQL without credentials and retains database, revision and honest provenance',async()=>{
+  const f=fixture();const previousId=f.session.id;
+  expect(f.session.startSqlEditor('hr','v1')).toEqual({connectionId:'hr',schemaFingerprint:'v1'});
+  expect(f.session.id).not.toBe(previousId);expect(f.session.restoredSql).toBeUndefined();
+  f.session.bindSql('SELECT id FROM employees WHERE salary > :threshold','hr','v1');f.setActive('other');
+  expect((await f.session.execute('SELECT id FROM employees WHERE salary > :threshold',{threshold:8000})).kind).toBe('result');
+  expect(f.client.execute).toHaveBeenCalledWith(expect.objectContaining({dbConfigId:'hr',readOnly:true,parameters:{threshold:8000}}),expect.anything());
+  expect(f.workspace.appendHistory).toHaveBeenCalledWith(expect.objectContaining({nlInput:'Manual SQL (no AI)',connectionId:'hr'}));
+  expect(f.client.generate).not.toHaveBeenCalled();expect(f.secrets.getActiveApiKey).not.toHaveBeenCalled();expect(ui.pick).not.toHaveBeenCalled();
+ });
+ it('does not let manual entry discard a running operation or bypass schema freshness',async()=>{
+  ui.provider='local';const f=fixture();let finish:(value:any)=>void=()=>{};
+  f.client.generate.mockImplementationOnce(()=>new Promise(r=>{finish=r}));const pending=f.session.ask('employees');
+  await vi.waitFor(()=>expect(f.client.generate).toHaveBeenCalled());expect(()=>f.session.startSqlEditor('hr','v1')).toThrow('Still working');
+  finish({sql:'SELECT id FROM employees'});await pending;
+  f.session.startSqlEditor('hr','v1');f.session.bindSql('SELECT id FROM employees','hr','v1');f.client.getSchema.mockResolvedValue({fingerprint:'v2'});
+  expect((await f.session.execute('SELECT id FROM employees')).kind).toBe('error');expect(f.client.execute).not.toHaveBeenCalled();
+ });
+ it('uses the actually executed manual or edited SQL and values for a later AI follow-up without sending rows',async()=>{
+  ui.provider='local';const f=fixture();f.session.startSqlEditor('hr','v1');
+  const sql='SELECT id FROM employees WHERE salary > :threshold';f.session.bindSql(sql,'hr','v1');
+  await f.session.execute(sql,{threshold:9000});await f.session.ask('Only those in IT');
+  const context=f.client.generate.mock.calls[0][0].conversation;
+  expect(context).toContainEqual(expect.objectContaining({role:'assistant',content:expect.stringContaining('"threshold":9000')}));
+  expect(JSON.stringify(context)).toContain(sql);expect(JSON.stringify(context)).not.toContain('"id":3');
+ });
  it('uses ChatGPT sign-in without an API-key prompt and consumes one host reservation for generation',async()=>{
   ui.provider='chatgpt';const f=fixture();
   Object.assign(f.secrets,{chatgpt:{snapshot:()=>({connected:true,planEnabled:true,model:'fixture-model'})},claimProviderRequest:vi.fn(async()=> 'chatgpt-fixture-bearer')});

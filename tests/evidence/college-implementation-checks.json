@@ -1,0 +1,219 @@
+{
+  "date": "2026-10-18",
+  "branch": "work/verbis-1.5-verified-workflows",
+  "sourceBaseCommit": "3b43b33c4798f5c14f84d1c83bf8526dd60541e1",
+  "version": "1.5.0 development",
+  "scope": "Finite college submission workflow; wider roadmap remains deferred",
+  "extension": {
+    "passed": 88,
+    "failed": 0,
+    "suites": 13,
+    "seconds": 7.17,
+    "scope": "Controlled host, loopback OAuth/JWT and subprocess fixtures; no real inference"
+  },
+  "backend": {
+    "passed": 135,
+    "skipped": 12,
+    "failed": 0,
+    "seconds": 65.51,
+    "python": "3.13.5",
+    "skippedReason": "Opt-in live-engine services not configured in this local run"
+  },
+  "build": {
+    "compile": "passed",
+    "lint": "passed",
+    "webviewTypecheck": "passed",
+    "productionBuild": "passed",
+    "packagingNode": "24.19.0"
+  },
+  "demo": {
+    "reviewedQueriesPassed": 7,
+    "independentCsvCalculations": true,
+    "sourceUnchanged": true,
+    "existingDestinationRefused": true,
+    "incorrectEqualityMutationDetected": true,
+    "realBackendSaveChartDiagnosticRehearsalReadOnlyChecks": "passed",
+    "realAIRequests": 0
+  },
+  "controlledUI": {
+    "controlledFixture": true,
+    "realAIRequests": 0,
+    "manualEntry": true,
+    "emptyEditorRetained": true,
+    "noAutomaticExecution": true,
+    "savedReopen": true,
+    "requiresConnection": true,
+    "widths": [
+      1100,
+      480,
+      360
+    ],
+    "pageErrors": []
+  },
+  "installedManual": {
+    "installedVSCode": "1.141.0",
+    "freshBackendInstall": true,
+    "connectionForm": true,
+    "manualSQL": true,
+    "thresholdRows": [
+      3,
+      4
+    ],
+    "changedThresholdRows": [
+      4
+    ],
+    "savedReopen": true,
+    "emptyEditorRetained": true,
+    "departmentPayroll": {
+      "Finance": 8001,
+      "IT": 27500
+    },
+    "chart": true,
+    "realAIRequests": 0
+  },
+  "realChatGPT": {
+    "date": "2026-10-17",
+    "provider": "ChatGPT Plus",
+    "model": "gpt-6-luna",
+    "synthetic": true,
+    "initialClarification": "Is employees.salary measured in INR per month?",
+    "initialClarificationClearedSql": true,
+    "attempts": 3,
+    "exchanges": [
+      {
+        "kind": "unit-confirmation",
+        "sql": "SELECT \"id\", \"name\", \"salary\", \"department\" FROM \"employees\" WHERE \"salary\" > :threshold ORDER BY \"id\" LIMIT 100",
+        "parameters": "{\"threshold\":8000}",
+        "busy": false,
+        "status": "Schema validation passed against the synthetic college database.",
+        "error": "",
+        "execution": {
+          "busy": false,
+          "rows": [
+            [
+              "3",
+              "Cara",
+              "8001",
+              "Finance"
+            ],
+            [
+              "4",
+              "Dev",
+              "12000",
+              "IT"
+            ]
+          ],
+          "error": ""
+        }
+      },
+      {
+        "kind": "department-follow-up",
+        "sql": "SELECT t2.\"id\", t2.\"name\", t2.\"salary\", t2.\"department\" FROM \"employees\" AS t2 JOIN \"departments\" AS t1 ON t2.\"department\" = t1.\"name\" WHERE t2.\"salary\" > :threshold AND t1.\"name\" = :department ORDER BY t2.\"id\" LIMIT 100",
+        "parameters": "{\"threshold\":8000,\"department\":\"IT\"}",
+        "busy": false,
+        "status": "Schema validation passed against the synthetic college database.",
+        "error": "",
+        "execution": {
+          "busy": false,
+          "rows": [
+            [
+              "4",
+              "Dev",
+              "12000",
+              "IT"
+            ]
+          ],
+          "error": ""
+        }
+      }
+    ],
+    "correct": true,
+    "buildBoundary": "Installed candidate preceding N45 startup-only changes; provider/analysis implementation matches the final build",
+    "candidateSha256": "d811cb35ea69806a96f561227b20ecfa40d37eb411a76a535065b467f153220c",
+    "driverCorrection": "First probe waited for SQL and missed a valid clarification. It made one request, not a retry. Corrected probe recognized terminal outcomes."
+  },
+  "coldStartup": {
+    "actualReproduction": "Original installed 10-second startup timed out; server became healthy afterward but client remained unavailable. Native manual restart recovered.",
+    "implemented": "Bounded 45-second readiness, timed-out child cleanup, concurrent-start guard, actual initial status",
+    "controlledCases": [
+      "readiness after 12 seconds",
+      "unready child stopped",
+      "newer startup preserved during cleanup",
+      "initial panel starting status"
+    ],
+    "finalInstalledAcceptance": {
+      "installedVSCode": "1.141.0",
+      "accountFreeProfile": true,
+      "verifiedPythonRuntimeReused": true,
+      "freshInstall": false,
+      "states": [
+        "Ready"
+      ],
+      "ready": true,
+      "aiRequests": 0
+    }
+  },
+  "installedCsv": {
+    "realUI": true,
+    "source": "synthetic college CSV",
+    "importedRows": 5,
+    "salaryCurrency": "INR",
+    "salaryPeriod": "monthly",
+    "strictThresholdIds": [
+      3,
+      4
+    ],
+    "savedAnalysisRestoresVisibleConnection": true,
+    "realAIRequests": 0,
+    "storedUnitMetadataVerified": true,
+    "storedRowsVerified": true,
+    "externalFixtureVerifierPassed": true
+  },
+  "package": {
+    "entries": 224,
+    "bytes": 2375236,
+    "sha256": "04fd67abf8e2d722baa3eaf65231a78ae60e5d4e85e56aba92cad020aa3221d9",
+    "runtimeFilesChecked": 215,
+    "runtimeMatchesSource": true,
+    "joseRuntimeIncluded": true,
+    "forbiddenFiles": [],
+    "credentialPatternFindings": 0,
+    "path": "verbis-1.5.0-college.vsix (distributed separately; ignored in Git)",
+    "installedRuntimeFilesChecked": 215
+  },
+  "publication": {
+    "branch": "work/verbis-1.5-verified-workflows",
+    "mainConfirmedUnchanged": "77b1422fcac2e205cd6d5ef39c0df94a4b2b3cb5",
+    "status": "awaiting final commit/push"
+  },
+  "remainingLimits": [
+    "OS SecretStorage persistence in a working keyring",
+    "Windows/macOS desktop acceptance",
+    "OpenRouter failure diagnosis and optional provider acceptance",
+    "Legacy Marketplace publishing workflow",
+    "Broader roadmap intentionally deferred"
+  ],
+  "privacy": "All desktop database content is synthetic. No keys, tokens, account identities, private profiles or raw authentication responses included.",
+  "environmentInterruptions": [
+    "Restricted VSIX packaging could not resolve the entrypoint; normal local-tooling rerun packaged and byte-verified all runtime files.",
+    "Approval service initially could not refresh its token; a later authorized retry recovered.",
+    "Reopening the old authenticated debug profile was rejected. A fresh account-free profile reused only the verified Python runtime; no authentication storage copied."
+  ],
+  "installedReport": {
+    "nativeExportFileObserved": true,
+    "reportContentVerified": true,
+    "executedThreshold": 8000,
+    "resultIds": [
+      3,
+      4
+    ],
+    "nextQuestionDraftExcluded": true,
+    "nativeDialogInput": "No scripted input sent: dialog had already closed when inspected; saved file verified",
+    "realAIRequests": 0
+  },
+  "geminiFollowup": {
+    "status": "Prepared in a normal VS Code window without debugging; awaiting user key entry for one optional retest",
+    "newRequestsMadeByAgent": 0
+  },
+  "screenshot": "college-manual-desktop.png: actual account-free installed workspace, synthetic rows"
+}

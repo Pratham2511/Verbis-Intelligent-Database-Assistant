@@ -1,0 +1,6 @@
+id,name,salary,department
+1,Alice,7500,IT
+2,Bob,8000,IT
+3,Cara,8001,Finance
+4,Dev,12000,IT
+5,Esha,,Finance

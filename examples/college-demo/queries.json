@@ -1,0 +1,9 @@
+[
+  {"id":"above-8000","name":"Employees above 8000","question":"Show employees earning more than 8000 INR per month.","sql":"SELECT id, name, salary, department FROM employees WHERE salary > :threshold ORDER BY id","parameters":{"threshold":8000}},
+  {"id":"only-it","name":"Keep the threshold, only IT","question":"Only those in IT.","sql":"SELECT id, name, salary, department FROM employees WHERE salary > :threshold AND department = :department ORDER BY id","parameters":{"threshold":8000,"department":"IT"}},
+  {"id":"equality","name":"Exactly at the boundary","question":"Show the employee earning exactly 8000.","sql":"SELECT id, name FROM employees WHERE salary = :threshold ORDER BY id","parameters":{"threshold":8000}},
+  {"id":"missing-salary","name":"Missing salary","question":"Which employee has a missing salary?","sql":"SELECT id, name FROM employees WHERE salary IS NULL ORDER BY id","parameters":{}},
+  {"id":"payroll-chart","name":"Monthly payroll by department","question":"Show monthly payroll by department.","sql":"SELECT department, SUM(salary) AS monthly_payroll FROM employees GROUP BY department ORDER BY department","parameters":{}},
+  {"id":"high-earners","name":"Reviewed high-earners definition","question":"Show high earners, using salary above 9000 INR per month.","sql":"SELECT id, name, salary FROM employees WHERE salary > :threshold ORDER BY id","parameters":{"threshold":9000}},
+  {"id":"join-expansion","name":"Why a joined total doubles","question":"Why does the joined salary total double?","sql":"SELECT SUM(e.salary) AS total FROM employees e JOIN payments p ON e.id = p.employee_id","parameters":{}}
+]

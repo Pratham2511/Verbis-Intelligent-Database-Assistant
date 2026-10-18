@@ -1,5 +1,16 @@
 # Verification evidence — 7–8 October 2026
 
+The historical records below keep their original dates. The latest checkpoint
+is [college-implementation-checks.json](college-implementation-checks.json),
+recorded 18 October 2026. It separates controlled tests, synthetic manual desktop
+checks and three actual Plus requests. Real Analysis clarification, threshold SQL
+and follow-up now pass; earlier pending-Plus statements describe past checkpoints.
+No credentials, identity details or raw authentication responses are included.
+[`college-manual-desktop.png`](college-manual-desktop.png) shows actual synthetic
+results in the final installed workspace. The final profile reused the verified
+Python runtime, copied no authentication storage and was not a fresh installer
+test. The initial fresh install is identified separately in the JSON record.
+
 Baseline code: 77b1422 (1.4.0). Development branch:
 work/verbis-1.5-verified-workflows (1.5.0).
 `baseline-backend.json` and `baseline-suite.txt` record independent original-code

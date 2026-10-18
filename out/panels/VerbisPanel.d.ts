@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { DBConfig } from '../types';
+import { DBConfig, BackendStatus } from '../types';
 import { BackendClient } from '../services/BackendClient';
 import { WorkspaceService } from '../services/WorkspaceService';
 import { SecretsService } from '../services/SecretsService';
@@ -9,6 +9,7 @@ export declare class VerbisPanel {
     private readonly workspace;
     private readonly secrets;
     private readonly getClient?;
+    private readonly getBackendStatus?;
     static currentPanel: VerbisPanel | undefined;
     private static readonly viewType;
     private panel;
@@ -16,7 +17,7 @@ export declare class VerbisPanel {
     private session;
     private restored;
     private activeConnectionId;
-    static createOrShow(context: vscode.ExtensionContext, client: BackendClient | null, workspace: WorkspaceService, secrets: SecretsService, getClient?: () => BackendClient | null): VerbisPanel;
+    static createOrShow(context: vscode.ExtensionContext, client: BackendClient | null, workspace: WorkspaceService, secrets: SecretsService, getClient?: () => BackendClient | null, getBackendStatus?: () => BackendStatus): VerbisPanel;
     private constructor();
     /**
      * Resolve the user-configured model for the active provider

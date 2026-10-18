@@ -1,0 +1,9 @@
+{
+  "above-8000": [{"id":3,"name":"Cara","salary":8001,"department":"Finance"},{"id":4,"name":"Dev","salary":12000,"department":"IT"}],
+  "only-it": [{"id":4,"name":"Dev","salary":12000,"department":"IT"}],
+  "equality": [{"id":2,"name":"Bob"}],
+  "missing-salary": [{"id":5,"name":"Esha"}],
+  "payroll-chart": [{"department":"Finance","monthly_payroll":8001},{"department":"IT","monthly_payroll":27500}],
+  "high-earners": [{"id":4,"name":"Dev","salary":12000}],
+  "join-expansion": [{"total":24000}]
+}

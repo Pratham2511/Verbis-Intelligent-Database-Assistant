@@ -100,7 +100,7 @@ async function activate(context) {
             if (status.planEnabled)
                 await vscode.workspace.getConfiguration('verbis').update('llm.provider', 'chatgpt', vscode.ConfigurationTarget.Workspace);
             if (workspaceService && secretsService)
-                VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('connections');
+                VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' }).openTab('connections');
             return status;
         }
         catch (error) {
@@ -308,7 +308,7 @@ async function activate(context) {
             const outcome = await session.execute(last.sql);
             if (outcome.kind !== 'result')
                 throw new Error(outcome.message || 'Execution failed');
-            VerbisPanel_1.VerbisPanel.createOrShow(context, client, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('analysis');
+            VerbisPanel_1.VerbisPanel.createOrShow(context, client, workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' }).openTab('analysis');
             vscode.window.showInformationMessage(`Query executed: ${outcome.result?.rowCount} rows.`);
         }
         catch (err) {
@@ -317,15 +317,15 @@ async function activate(context) {
     }), vscode.commands.registerCommand('verbis.showSchema', () => {
         if (!backendManager)
             return;
-        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('schema');
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' }).openTab('schema');
     }), vscode.commands.registerCommand('verbis.openTree', () => {
         if (!workspaceService)
             return;
-        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('tree');
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' }).openTab('tree');
     }), vscode.commands.registerCommand('verbis.addConnection', async () => {
         if (!workspaceService || !secretsService)
             return;
-        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('connections');
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' }).openTab('connections');
     }), 
     // ── Edit an existing connection: prefill the shared form, update in ──
     //    place (same id), persist, refresh, and reconnect if it was active.
@@ -335,7 +335,7 @@ async function activate(context) {
         const conn = await resolveConnectionArg(arg);
         if (!conn)
             return;
-        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).editConnection(conn);
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' }).editConnection(conn);
     }), 
     // ── Delete a connection: confirm, remove config + secret, refresh. ──
     //    Never touches the underlying database or any files.
@@ -368,10 +368,10 @@ async function activate(context) {
     }), vscode.commands.registerCommand('verbis.runRobustnessTest', () => {
         if (!workspaceService || !secretsService)
             return;
-        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null).openTab('rehearsal');
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' }).openTab('rehearsal');
     }), vscode.commands.registerCommand('verbis.openWorkspace', () => {
         if (workspaceService && secretsService)
-            VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null);
+            VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null, workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' });
     }), vscode.commands.registerCommand('verbis.restartBackend', async () => {
         if (!backendManager)
             return;
@@ -382,7 +382,7 @@ async function activate(context) {
     }), vscode.commands.registerCommand('verbis.openGlossaryEditor', () => {
         if (!workspaceService || !backendManager)
             return;
-        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService, secretsService, () => backendManager?.getClient() ?? null);
+        VerbisPanel_1.VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService, secretsService, () => backendManager?.getClient() ?? null, () => backendManager?.getStatus() ?? { state: 'stopped' });
         VerbisPanel_1.VerbisPanel.currentPanel?.openTab('glossary');
     }));
     // ── Fix E (Task 1.4) — Configuration change listener for provider switches ──

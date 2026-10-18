@@ -53,6 +53,7 @@ class VerbisPanel {
     workspace;
     secrets;
     getClient;
+    getBackendStatus;
     static currentPanel;
     static viewType = 'verbis.panel';
     panel;
@@ -61,7 +62,7 @@ class VerbisPanel {
     restored;
     // Fix D — active connection tracking (replaces hardcoded 'default')
     activeConnectionId = null;
-    static createOrShow(context, client, workspace, secrets, getClient) {
+    static createOrShow(context, client, workspace, secrets, getClient, getBackendStatus) {
         if (VerbisPanel.currentPanel) {
             VerbisPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active);
             return VerbisPanel.currentPanel;
@@ -73,15 +74,16 @@ class VerbisPanel {
                 vscode.Uri.file(path.join(context.extensionPath, 'webview', 'dist')),
             ],
         });
-        VerbisPanel.currentPanel = new VerbisPanel(panel, context, client, workspace, secrets, getClient);
+        VerbisPanel.currentPanel = new VerbisPanel(panel, context, client, workspace, secrets, getClient, getBackendStatus);
         return VerbisPanel.currentPanel;
     }
-    constructor(panel, context, initialClient, workspace, secrets, getClient) {
+    constructor(panel, context, initialClient, workspace, secrets, getClient, getBackendStatus) {
         this.context = context;
         this.initialClient = initialClient;
         this.workspace = workspace;
         this.secrets = secrets;
         this.getClient = getClient;
+        this.getBackendStatus = getBackendStatus;
         this.panel = panel;
         this.session = new AssistantSession_1.AssistantSession(() => this.client, this.secrets, this.workspace);
         this.restored = this.session.restoreLastSession().catch(e => { vscode.window.showWarningMessage(`Conversation restore failed: ${e.message}`); return 0; });
@@ -148,7 +150,7 @@ class VerbisPanel {
                 if (this.secrets.chatgpt)
                     this.postMessage({ type: 'CHATGPT_STATUS', payload: this.secrets.chatgpt.snapshot() });
                 this.pushProviderSettings();
-                this.postMessage({ type: 'BACKEND_STATUS', payload: { state: this.client ? 'ready' : 'stopped' } });
+                this.postMessage({ type: 'BACKEND_STATUS', payload: this.getBackendStatus?.() ?? { state: this.client ? 'ready' : 'stopped' } });
                 return;
             }
             if (msg.type === 'GET_PROVIDER_SETTINGS' || msg.type === 'UPDATE_PROVIDER_SETTINGS') {
@@ -304,6 +306,17 @@ class VerbisPanel {
                 return;
             }
             switch (msg.type) {
+                case 'START_SQL_EDITOR': {
+                    const id = await this.resolveConnectionId();
+                    if (!id)
+                        throw new Error('Connect a database or import a CSV before writing SQL.');
+                    const schema = await this.client.getSchema(id);
+                    if (await this.resolveConnectionId() !== id)
+                        throw new Error('The selected database changed. Open the SQL editor again.');
+                    const binding = this.session.startSqlEditor(id, schema.fingerprint);
+                    this.postMessage({ type: 'WORKSPACE_RESULT', requestId: msg.requestId, payload: binding });
+                    break;
+                }
                 case 'OPEN_ANALYSIS': {
                     const { id } = msg.payload;
                     const data = await this.client.workspaceAction('analysis_list', {});
@@ -312,6 +325,7 @@ class VerbisPanel {
                         throw new Error('Saved analysis no longer exists');
                     await this.workspace.setActiveConnection(entry.connectionId);
                     this.session.restoreAnalysis(entry);
+                    await this.pushConnections();
                     this.postMessage({ type: 'WORKSPACE_RESULT', requestId: msg.requestId, payload: entry });
                     break;
                 }

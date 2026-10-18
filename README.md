@@ -30,13 +30,20 @@ behavior and outstanding release checks.
    plan allowance; disable purchased-credit use in **Manage usage** if desired.
    This development build allows one attempted request initially and requires
    **Allow one more AI request** for each additional attempt, including retries
-   after provider errors. Real inference acceptance remains pending.
+   after provider errors. Installed Plus testing passed clarification, SQL
+   generation and a follow-up on the synthetic demo; see the
+   [dated verification record](tests/evidence/college-implementation-checks.json).
 5. Open **Ask your data**, write a question, choose **Write SQL with AI**, then
    review the SQL and its database before choosing **Run query**. Follow-ups
    preserve prior query context. Save a named analysis with
    explicit `:named` parameters and export results or a readable report.
 
 The terminal assistant remains available as **Verbis: Open Assistant**.
+If you have no AI quota, select a database and choose **Ask your data → Write SQL
+myself**. Type or paste reviewed SQL, set named values and choose **Run query**.
+This uses no AI and retains the same execution safeguards. Clearing the SQL
+leaves its editor open. Saved analyses can also be reopened without AI.
+
 `/run`, `/cancel`, `/reset`, `/history`, `/model` and Ctrl+C are supported.
 Terminal output shows at most 50 rows; the Analysis workspace paginates the
 loaded result. Query result limits are configurable up to 10,000 rows.
@@ -95,6 +102,12 @@ Workspace state lives in `.qmind/`. Managed imported data is under
 Review workspace state before sharing or committing it.
 
 ## Development and verification
+
+For a reproducible presentation, use the [synthetic demo kit](examples/college-demo/README.md),
+[five-minute guide](docs/DEMO-GUIDE.md), [architecture](docs/ARCHITECTURE.md) and
+[submission report](docs/SUBMISSION-REPORT.md). The demo creates a new folder,
+refuses to overwrite existing data and checks seven exact query results without
+AI. Broader expansions remain deferred under the [college scope](docs/COLLEGE-READINESS-AUDIT.md).
 
 ```bash
 npm ci

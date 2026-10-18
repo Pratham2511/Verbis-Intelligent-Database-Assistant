@@ -85,6 +85,10 @@ export declare class AssistantSession {
         model?: string;
     }, signal: AbortSignal) => Promise<T>): Promise<T>;
     bindSql(sql: string, connectionId: string, schemaFingerprint?: string, parameters?: Record<string, unknown>): void;
+    startSqlEditor(connectionId: string, schemaFingerprint: string): {
+        connectionId: string;
+        schemaFingerprint: string;
+    };
     restoreAnalysis(entry: {
         id: string;
         sql: string;

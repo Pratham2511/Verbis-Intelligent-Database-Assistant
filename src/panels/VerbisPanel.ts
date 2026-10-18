@@ -12,7 +12,7 @@ import * as path from 'path';
 import * as fs from 'fs';
 import {saveConnection} from '../services/ConnectionService';
 import {AssistantSession} from '../assistant/AssistantSession';
-import { WebviewMessage, ChatMessage, DBConfig } from '../types';
+import { WebviewMessage, ChatMessage, DBConfig, BackendStatus } from '../types';
 import { BackendClient } from '../services/BackendClient';
 import { WorkspaceService } from '../services/WorkspaceService';
 import { SecretsService } from '../services/SecretsService';
@@ -34,7 +34,8 @@ export class VerbisPanel {
     client: BackendClient | null,
     workspace: WorkspaceService,
     secrets: SecretsService,
-    getClient?: () => BackendClient | null
+    getClient?: () => BackendClient | null,
+    getBackendStatus?: () => BackendStatus
   ): VerbisPanel {
     if (VerbisPanel.currentPanel) {
       VerbisPanel.currentPanel.panel.reveal(vscode.ViewColumn.Active);
@@ -52,7 +53,7 @@ export class VerbisPanel {
         ],
       }
     );
-    VerbisPanel.currentPanel = new VerbisPanel(panel, context, client, workspace, secrets, getClient);
+    VerbisPanel.currentPanel = new VerbisPanel(panel, context, client, workspace, secrets, getClient, getBackendStatus);
     return VerbisPanel.currentPanel;
   }
 
@@ -62,7 +63,8 @@ export class VerbisPanel {
     private initialClient: BackendClient | null,
     private readonly workspace: WorkspaceService,
     private readonly secrets: SecretsService,
-    private readonly getClient?: () => BackendClient | null
+    private readonly getClient?: () => BackendClient | null,
+    private readonly getBackendStatus?: () => BackendStatus
   ) {
     this.panel = panel;
     this.session=new AssistantSession(()=>this.client,this.secrets,this.workspace);
@@ -137,7 +139,7 @@ export class VerbisPanel {
       if(this.requestedConnection)this.postMessage({type:'EDIT_CONNECTION',payload:this.requestedConnection});
       if(this.secrets.chatgpt)this.postMessage({type:'CHATGPT_STATUS',payload:this.secrets.chatgpt.snapshot()});
       this.pushProviderSettings();
-      this.postMessage({type:'BACKEND_STATUS',payload:{state:this.client?'ready':'stopped'}});return;
+      this.postMessage({type:'BACKEND_STATUS',payload:this.getBackendStatus?.()??{state:this.client?'ready':'stopped'}});return;
     }
     if (msg.type === 'GET_PROVIDER_SETTINGS' || msg.type === 'UPDATE_PROVIDER_SETTINGS') {
       if (msg.type === 'UPDATE_PROVIDER_SETTINGS') {
@@ -250,10 +252,18 @@ export class VerbisPanel {
     }
 
       switch (msg.type) {
+        case 'START_SQL_EDITOR': {
+          const id=await this.resolveConnectionId();if(!id)throw new Error('Connect a database or import a CSV before writing SQL.');
+          const schema=await this.client.getSchema(id);
+          if(await this.resolveConnectionId()!==id)throw new Error('The selected database changed. Open the SQL editor again.');
+          const binding=this.session.startSqlEditor(id,schema.fingerprint);
+          this.postMessage({type:'WORKSPACE_RESULT',requestId:msg.requestId,payload:binding});break;
+        }
         case 'OPEN_ANALYSIS': {
           const {id}=msg.payload as {id:string};const data=await this.client.workspaceAction('analysis_list',{});
           const entry=data.analyses.find((a:any)=>a.id===id);if(!entry)throw new Error('Saved analysis no longer exists');
           await this.workspace.setActiveConnection(entry.connectionId);this.session.restoreAnalysis(entry);
+          await this.pushConnections();
           this.postMessage({type:'WORKSPACE_RESULT',requestId:msg.requestId,payload:entry});break;
         }
         case 'GENERATE_SQL': {

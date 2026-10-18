@@ -60,7 +60,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       try {
         const status=await chatgptService!.signIn();
         if(status.planEnabled)await vscode.workspace.getConfiguration('verbis').update('llm.provider','chatgpt',vscode.ConfigurationTarget.Workspace);
-        if(workspaceService&&secretsService)VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService,()=>backendManager?.getClient()??null).openTab('connections');
+        if(workspaceService&&secretsService)VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService,()=>backendManager?.getClient()??null,()=>backendManager?.getStatus()??{state:'stopped'}).openTab('connections');
         return status;
       }catch(error){await vscode.window.showErrorMessage((error as Error).message);throw error;}
     }),
@@ -317,7 +317,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         const session=new AssistantSession(()=>client,secretsService!,workspaceService);
         session.bindSql(last.sql,last.connectionId,last.schemaFingerprint,last.parameters);
         const outcome=await session.execute(last.sql);if(outcome.kind!=='result')throw new Error(outcome.message||'Execution failed');
-        VerbisPanel.createOrShow(context,client,workspaceService,secretsService!,()=>backendManager?.getClient()??null).openTab('analysis');
+        VerbisPanel.createOrShow(context,client,workspaceService,secretsService!,()=>backendManager?.getClient()??null,()=>backendManager?.getStatus()??{state:'stopped'}).openTab('analysis');
         vscode.window.showInformationMessage(`Query executed: ${outcome.result?.rowCount} rows.`);
       } catch (err) {
         vscode.window.showErrorMessage(`Re-execution failed: ${(err as Error).message}`);
@@ -326,17 +326,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     vscode.commands.registerCommand('verbis.showSchema', () => {
       if (!backendManager) return;
-      VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService!, secretsService!,()=>backendManager?.getClient()??null).openTab('schema');
+      VerbisPanel.createOrShow(context, backendManager.getClient(), workspaceService!, secretsService!,()=>backendManager?.getClient()??null,()=>backendManager?.getStatus()??{state:'stopped'}).openTab('schema');
     }),
 
     vscode.commands.registerCommand('verbis.openTree', () => {
       if (!workspaceService) return;
-      VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService!,()=>backendManager?.getClient()??null).openTab('tree');
+      VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService!,()=>backendManager?.getClient()??null,()=>backendManager?.getStatus()??{state:'stopped'}).openTab('tree');
     }),
 
     vscode.commands.registerCommand('verbis.addConnection', async () => {
       if (!workspaceService || !secretsService) return;
-      VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService,()=>backendManager?.getClient()??null).openTab('connections');
+      VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService,()=>backendManager?.getClient()??null,()=>backendManager?.getStatus()??{state:'stopped'}).openTab('connections');
     }),
 
     // ── Edit an existing connection: prefill the shared form, update in ──
@@ -344,7 +344,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.commands.registerCommand('verbis.editConnection', async (arg?: unknown) => {
       if (!workspaceService || !secretsService) return;
       const conn=await resolveConnectionArg(arg);if(!conn)return;
-      VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService,()=>backendManager?.getClient()??null).editConnection(conn);
+      VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService,()=>backendManager?.getClient()??null,()=>backendManager?.getStatus()??{state:'stopped'}).editConnection(conn);
     }),
 
     // ── Delete a connection: confirm, remove config + secret, refresh. ──
@@ -377,11 +377,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
     vscode.commands.registerCommand('verbis.runRobustnessTest', () => {
       if (!workspaceService || !secretsService) return;
-      VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService,()=>backendManager?.getClient()??null).openTab('rehearsal');
+      VerbisPanel.createOrShow(context,backendManager?.getClient()??null,workspaceService,secretsService,()=>backendManager?.getClient()??null,()=>backendManager?.getStatus()??{state:'stopped'}).openTab('rehearsal');
     }),
 
     vscode.commands.registerCommand('verbis.openWorkspace', () => {
-      if (workspaceService && secretsService) VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null,workspaceService,secretsService, () => backendManager?.getClient() ?? null);
+      if (workspaceService && secretsService) VerbisPanel.createOrShow(context, backendManager?.getClient() ?? null,workspaceService,secretsService, () => backendManager?.getClient() ?? null,()=>backendManager?.getStatus()??{state:'stopped'});
     }),
     vscode.commands.registerCommand('verbis.restartBackend', async () => {
       if (!backendManager) return;
@@ -397,7 +397,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
         backendManager.getClient(),
         workspaceService,
         secretsService!,
-        ()=>backendManager?.getClient()??null
+        ()=>backendManager?.getClient()??null,()=>backendManager?.getStatus()??{state:'stopped'}
       );
       VerbisPanel.currentPanel?.openTab('glossary');
     })

@@ -1,5 +1,78 @@
 # Verbis implementation and acceptance log
 
+## Current checkpoint — 18 October 2026 (Asia/Kolkata)
+
+The user authorized the finite college-submission scope and limited real Plus
+testing. No later roadmap expansion was added. The historical sections below
+retain their original dates, counts and pending conditions; this checkpoint
+supersedes their current-status claims.
+
+Implemented an explicit **Write SQL myself** route using the selected database's
+real schema revision, without credential acquisition or generation. Clearing SQL
+retains the editor. Results are loaded deliberately rather than overwriting a new
+draft at mount. Busy controls protect reviewed values, saved analyses restore
+the visible database and latest stored definition, and successful execution adds
+the actual SQL/values to follow-up context without result rows (N41–N44).
+
+Added a synthetic college demo with CSV/schema/application examples, safe setup
+that refuses an existing destination, seven exact expected-result checks and an
+independent CSV calculation. A deliberately incorrect `>=` query is detected.
+The backend evaluation also verifies save/chart/filter diagnostics, an isolated
+rename breaking a query, read-only rejection and unchanged source database bytes.
+The five-minute guide, architecture/diagram, short report and corrected developer
+instructions provide the remaining submission material (N39).
+
+Fresh verification on 17–18 October:
+
+| Check | Result / boundary |
+|---|---|
+| Extension | 88 passed across 13 suites, 7.17 seconds; controlled host/OAuth/subprocess fixtures, no live inference. |
+| Backend | 135 passed, 12 skipped, 65.51 seconds; Python 3.13.5. Opt-in live engines not configured in this run; previous actual engine/TLS evidence remains separate. |
+| Build | TypeScript compilation, ESLint, webview typecheck and production build pass. Node 24.19.0 used for VSIX packaging. |
+| Demo verifier | Seven reviewed cases pass; source unchanged; overwrite refusal and strict-boundary mutation checks pass. |
+| Controlled UI | Manual entry/empty editor/no automatic run/save reopen/required connection at widths 1100, 480 and 360; all 13 pages/type inputs/provider/import fixture checks also pass. Fixtures are not live-provider evidence. |
+| Actual installed VS Code | 1.141.0 in an isolated profile. Fresh normal backend installation completed; observed runtime file bytes 152,825,942. Manual threshold 8000 returns ids 3/4; changing to 9000 returns 4; saved reopen restores 8000; empty editor and department payroll chart pass. |
+| Real Plus | Actual browser authorization and model catalog, then three requests with `gpt-6-luna`: salary-unit clarification clears old SQL; confirmed monthly INR produces ids 3/4; “Only those in IT” retains threshold and returns id 4. SQL was reviewed/executed against synthetic SQLite; no simulated response was counted. |
+
+The first real-provider probe incorrectly waited for SQL without recognizing a
+valid clarification. Its timeout was a driver error, not another provider call
+or a product failure. The corrected probe captured clarification and both exact
+execution results. No fourth request was made. The user later requested Gemini
+setup after its quota reset; no key was reused from chat or embedded in fixtures.
+
+An actual cold backend import exceeded the old ten-second startup deadline and
+became healthy afterward while the app remained crashed. Manual Restart Backend
+recovered it. N45 raises the bounded deadline to 45 seconds, cleans an unready
+child, prevents cleanup from overwriting a newer startup and reports the actual
+initial status. Four relevant controlled startup/panel regressions pass; final
+installed-build acceptance is distinguished in the current JSON evidence.
+
+A temporary Codex automatic-approval outage reported a revoked refresh token;
+the affected CSV attempt did not execute. A later authorized retry passed the
+approval service. This was an environment interruption, not a Verbis defect.
+
+Final artifact hashes, installed checks and publication status are in
+[college-implementation-checks.json](../tests/evidence/college-implementation-checks.json).
+The final VSIX has 224 entries / 2,375,236 bytes; 215 packaged and installed
+runtime files match source/assets byte for byte. Final installed startup reaches
+Ready in a fresh account-free profile reusing only the verified Python runtime;
+this is separate from the initial fresh installation. CSV import stores all five
+expected rows and INR/monthly metadata; reopening the analysis restores College
+demo. The actual saved report retains threshold 8000 and ids 3/4, excluding a
+later question draft. The native dialog had already closed when inspected, so
+no scripted native input was sent. A screenshot shows the actual result rows.
+
+Automatic approval rejected reopening the old authenticated debug profile. The
+safe replacement copied no authentication storage and used a new account-free
+profile. Debugging was closed before normal Gemini key entry; the optional
+one-request Gemini retest does not block the already-passing Plus acceptance.
+Credentialed profiles, runtime environments, databases, raw logs and keys remain
+ignored. `main` is preserved at the original baseline; only the development
+branch is intended for publication. OS keyring, Windows/macOS desktop, optional
+provider acceptance and the legacy Marketplace workflow remain unverified.
+
+## Historical implementation record
+
 7–8 October 2026 (Asia/Kolkata), branch `work/verbis-1.5-verified-workflows`.
 Baseline: `77b1422fcac2e205cd6d5ef39c0df94a4b2b3cb5`, extension 1.4.0.
 The complete readable handoff was read: 1,091 lines. No AGENTS.md was found.

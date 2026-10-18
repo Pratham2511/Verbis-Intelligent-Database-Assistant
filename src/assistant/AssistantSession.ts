@@ -137,6 +137,13 @@ export class AssistantSession {
     }finally{if(this.abortController===controller){this.busy=false;this.abortController=null}}
   }
   bindSql(sql:string,connectionId:string,schemaFingerprint?:string,parameters?:Record<string,unknown>){this.stateRevision++;this.pending={sql,connectionId,schemaFingerprint,parameters}}
+  startSqlEditor(connectionId:string,schemaFingerprint:string){
+    if(this.busy)throw new Error('Still working. Cancel or wait before starting a SQL query.');
+    this.stateRevision++;
+    this.sessionId=crypto.randomUUID();this.conversationConnectionId=connectionId;
+    this.lastUserQuestion='Manual SQL (no AI)';this.history=[{role:'user',content:this.lastUserQuestion,timestamp:Date.now()}];this.pending=undefined;
+    return {connectionId,schemaFingerprint};
+  }
   restoreAnalysis(entry:{id:string;sql:string;question:string;connectionId:string;schemaFingerprint:string;parameters:Record<string,unknown>}){
     this.sessionId=entry.id;this.conversationConnectionId=entry.connectionId;this.lastUserQuestion=entry.question;
     this.history=[{role:'user',content:entry.question+'\nReviewed bindings: '+JSON.stringify(entry.parameters),timestamp:Date.now()},{role:'assistant',content:entry.sql,sql:entry.sql,connectionId:entry.connectionId,schemaFingerprint:entry.schemaFingerprint,parameters:entry.parameters,timestamp:Date.now()+1}];
@@ -161,7 +168,8 @@ export class AssistantSession {
         timeoutSeconds:c.get<number>('execution.timeoutSeconds',60)},controller.signal);
       await this.recordExecution(sql,dbConfigId,true,result,runQuestion,parameters??binding.parameters??{},binding.schemaFingerprint);
       if(controller.signal.aborted||this.sessionId!==runSession)return {kind:'cancelled',message:'The completed attempt was recorded in history; this session was reset.'};
-      this.history.push({role:'assistant',content:`Executed: ${result.rowCount} rows in ${result.executionTimeMs}ms.`,timestamp:Date.now()});await this.persist();
+      this.history.push({role:'assistant',content:'Reviewed SQL:\n'+sql+'\nExecuted values: '+JSON.stringify(parameters??binding.parameters??{}),sql,connectionId:dbConfigId,schemaFingerprint:binding.schemaFingerprint,parameters:parameters??binding.parameters??{},timestamp:Date.now()});
+      this.history.push({role:'assistant',content:`Executed: ${result.rowCount} rows in ${result.executionTimeMs}ms.`,timestamp:Date.now()+1});await this.persist();
       return {kind:'result',result};
     }catch(err){
       await this.recordExecution(sql,dbConfigId,false,undefined,runQuestion,parameters??binding.parameters??{},binding.schemaFingerprint).catch(()=>{});

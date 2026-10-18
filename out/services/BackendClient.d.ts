@@ -43,8 +43,9 @@ export declare class BackendClient {
         table_count: number;
     }>;
     refreshSchema(dbConfigId: string): Promise<{
-        tables: unknown[];
+        tables: SchemaInfo[];
         indexed: boolean;
+        fingerprint: string;
     }>;
     generate(payload: {
         nlInput: string;
@@ -101,6 +102,7 @@ export declare class BackendClient {
     getSchema(dbConfigId: string): Promise<{
         tables: SchemaInfo[];
         indexed: boolean;
+        fingerprint: string;
     }>;
     analyzeImpact(payload: {
         ddl: string;

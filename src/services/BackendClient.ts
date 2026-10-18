@@ -86,7 +86,7 @@ export class BackendClient {
   // ── Schema refresh after DDL (Fix C + Fix F) ────────────────────────
   // Forces schema.py to delete stale schema_cache.json and re-index ChromaDB.
   // Called after SCHEMA_EXECUTE creates new tables. POST endpoint (not GET).
-  async refreshSchema(dbConfigId: string): Promise<{ tables: unknown[]; indexed: boolean }> {
+  async refreshSchema(dbConfigId: string): Promise<{ tables: SchemaInfo[]; indexed: boolean; fingerprint: string }> {
     return this.requestJson('/api/schema/refresh', 'POST', {
       db_config_id: dbConfigId,
     });
@@ -202,7 +202,7 @@ export class BackendClient {
   }
 
   // ─── Schema Introspection + ChromaDB Indexing ───────────────────────
-  async getSchema(dbConfigId: string): Promise<{ tables: SchemaInfo[]; indexed: boolean }> {
+  async getSchema(dbConfigId: string): Promise<{ tables: SchemaInfo[]; indexed: boolean; fingerprint: string }> {
     return this.requestJson(`/api/schema?dbConfigId=${encodeURIComponent(dbConfigId)}`, 'GET');
   }
 

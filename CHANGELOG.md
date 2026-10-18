@@ -2,6 +2,16 @@
 
 ## 1.5.0 — development, unreleased
 
+- Add manual SQL entry with no provider allowance, retaining database/revision
+  binding and execution safeguards.
+- Keep an empty editor open, prevent initial last-result loading from replacing
+  a new draft, and update the visible connection when reopening a saved analysis.
+- Add a synthetic college demo, independent expected-result checks, presentation
+  guide, architecture/report and corrected developer instructions.
+- Allow bounded cold backend startup beyond ten seconds, clean up timed-out
+  processes and show the actual starting state in a newly opened workspace.
+- Retain executed SQL and values for follow-ups after manual query edits.
+
 - Add OpenRouter with provider-specific secrets/session keys and configurable free model slugs; default Inkling free, paid slugs rejected before network access, no SDK retries.
 
 - Repair SQL safety, privacy payload handling, schema/connection scope,

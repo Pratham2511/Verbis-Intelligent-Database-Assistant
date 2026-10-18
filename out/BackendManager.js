@@ -50,7 +50,8 @@ const vscode = __importStar(require("vscode"));
 const BackendClient_1 = require("./services/BackendClient");
 const MAX_PORT_RETRIES = 10;
 const HEALTH_CHECK_INTERVAL_MS = 500;
-const HEALTH_CHECK_TIMEOUT_MS = 10_000;
+// Cold imports can exceed ten seconds on a busy presentation machine.
+const HEALTH_CHECK_TIMEOUT_MS = 45_000;
 const CRASH_RESTART_WINDOW_MS = 30_000;
 class BackendManager extends events_1.EventEmitter {
     backendScriptPath;
@@ -143,9 +144,16 @@ class BackendManager extends events_1.EventEmitter {
             this.setStatus({ state: 'ready', port, pid: child.pid });
         }
         else {
+            // A late server must not keep running on an inaccessible occupied port.
+            if (this.process === child) {
+                const stopping = this.stop(), stopEpoch = this.epoch;
+                await stopping;
+                if (this.epoch !== stopEpoch)
+                    return this.status;
+            }
             this.setStatus({
                 state: 'crashed',
-                lastError: 'Health check timeout — backend failed to start within 10s.',
+                lastError: 'Health check timeout — backend was not ready within 45s. Check the Verbis Backend output and retry.',
             });
             vscode.window.showErrorMessage('Verbis backend failed to start. Click "Restart Backend" to retry.', 'Restart Backend').then(action => {
                 if (action === 'Restart Backend')

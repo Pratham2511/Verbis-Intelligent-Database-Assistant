@@ -232,6 +232,17 @@ class AssistantSession {
         }
     }
     bindSql(sql, connectionId, schemaFingerprint, parameters) { this.stateRevision++; this.pending = { sql, connectionId, schemaFingerprint, parameters }; }
+    startSqlEditor(connectionId, schemaFingerprint) {
+        if (this.busy)
+            throw new Error('Still working. Cancel or wait before starting a SQL query.');
+        this.stateRevision++;
+        this.sessionId = crypto.randomUUID();
+        this.conversationConnectionId = connectionId;
+        this.lastUserQuestion = 'Manual SQL (no AI)';
+        this.history = [{ role: 'user', content: this.lastUserQuestion, timestamp: Date.now() }];
+        this.pending = undefined;
+        return { connectionId, schemaFingerprint };
+    }
     restoreAnalysis(entry) {
         this.sessionId = entry.id;
         this.conversationConnectionId = entry.connectionId;
@@ -270,7 +281,8 @@ class AssistantSession {
             await this.recordExecution(sql, dbConfigId, true, result, runQuestion, parameters ?? binding.parameters ?? {}, binding.schemaFingerprint);
             if (controller.signal.aborted || this.sessionId !== runSession)
                 return { kind: 'cancelled', message: 'The completed attempt was recorded in history; this session was reset.' };
-            this.history.push({ role: 'assistant', content: `Executed: ${result.rowCount} rows in ${result.executionTimeMs}ms.`, timestamp: Date.now() });
+            this.history.push({ role: 'assistant', content: 'Reviewed SQL:\n' + sql + '\nExecuted values: ' + JSON.stringify(parameters ?? binding.parameters ?? {}), sql, connectionId: dbConfigId, schemaFingerprint: binding.schemaFingerprint, parameters: parameters ?? binding.parameters ?? {}, timestamp: Date.now() });
+            this.history.push({ role: 'assistant', content: `Executed: ${result.rowCount} rows in ${result.executionTimeMs}ms.`, timestamp: Date.now() + 1 });
             await this.persist();
             return { kind: 'result', result };
         }

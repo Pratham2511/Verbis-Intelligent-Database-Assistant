@@ -19,6 +19,7 @@ export default function StartWorkspace({connection, backend, chatgpt, navigate}:
       <p>{chatgpt?.planEnabled ? (chatgpt.model ? 'Your ChatGPT plan and model are selected.' : 'Your ChatGPT plan is connected. Choose a model in Settings before your first question.') : 'Use ChatGPT Plus or Pro by signing in, or choose a provider with an API key in Settings.'}</p>
       <button onClick={() => navigate('connections')}>{chatgpt?.model ? 'Review AI settings' : 'Set up AI'}</button>
       <p className="help-text">Signing in makes no AI request. Generating an answer uses your provider allowance.</p>
+      <p className="help-text">You can also choose “Write SQL myself” on Ask your data. Writing, running and saving your own queries needs no AI account.</p>
     </Step>
     <Step number={3} title="Ask, review, then run">
       <p>Try a question such as “Show employees earning more than 8,000.” Verbis writes a query; it runs only when you choose <strong>Run query</strong>.</p>

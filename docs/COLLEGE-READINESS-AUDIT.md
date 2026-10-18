@@ -3,6 +3,32 @@
 Audited 9 October 2026. Source: `1bc9fddb7f58c180c7c835f69f4b86c859733023`,
 development version 1.5.0, branch `work/verbis-1.5-verified-workflows`.
 
+## Implementation checkpoint — 18 October 2026
+
+The inventory below preserves the 9 October audit. Its then-pending items are
+superseded by this checkpoint and [the current work log](WORK-LOG.md).
+
+- Real Plus inference now passes in installed VS Code: salary-unit clarification,
+  correct strict-threshold SQL and an IT follow-up. Three small requests used
+  `gpt-6-luna`; all data was synthetic. Gemini-specific retries and other provider
+  matrices are not required for the chosen demonstration route.
+- Manual SQL now has an explicit no-AI entry, a persistent empty editor and
+  real connection/schema binding. Installed threshold/value/save/reopen/chart
+  checks pass. Executed edits and values are retained for subsequent follow-ups.
+- The synthetic demo kit, seven independent expected-result checks, five-minute
+  guide, architecture diagram, short report and corrected contributor guide are
+  implemented. The fixture deliberately exposes equality, NULL and join expansion.
+- Current local suites pass: 88 extension tests; 135 backend tests, with 12
+  opt-in engine cases skipped. Build, lint, typecheck and packaging are verified
+  separately from actual installed behavior. A cold-start timeout discovered in
+  the presentation window is fixed with bounded readiness and cleanup regressions.
+
+Final package/desktop/publication status is recorded in
+[college-implementation-checks.json](../tests/evidence/college-implementation-checks.json).
+Windows/macOS acceptance, OS keyring persistence, optional providers and the
+legacy Marketplace publisher remain separate limits. The original roadmap
+percentages have not been inflated to imply those checks passed.
+
 ## Assessment
 
 Verbis already has enough feature breadth for a substantial college project.

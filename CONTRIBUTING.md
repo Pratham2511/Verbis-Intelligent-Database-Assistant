@@ -1,95 +1,115 @@
-# Verbis — VS Code Extension Development Notes
+# Developing Verbis
 
-This file collects notes for contributors and developers extending Verbis.
+Use Node 24 and Python 3.11–3.13. Open a disposable project for testing. The
+extension runs Python from an isolated environment; your development test venv
+is separate. No real provider key is needed for the automated suites.
 
-## Dev Workflow
+## Install and check
 
-```bash
-# Terminal 1: Watch TypeScript (extension host)
-cd verbis
-npm run watch
-
-# Terminal 2: Watch React webview (Vite)
-cd webview
-npm run dev
-
-# Terminal 3: Run Python backend directly (for debugging)
-cd python_backend
-python main.py --port 8765 --workspace /path/to/test/workspace
-
-# Launch VS Code with Extension Development Host
-code --extensionDevelopmentPath=$(pwd)
-```
-
-## Debugging the Python Backend
-
-The backend logs to stderr (visible in VS Code Output panel → "Verbis" channel).
-For verbose logs:
+Run from the repository root:
 
 ```bash
-python main.py --port 8765 --workspace . --log-level DEBUG
+npm ci
+npm ci --prefix webview
+python3 -m venv .venv
+.venv/bin/python -m pip install -r python_backend/requirements-dev.txt
+npm run compile
+npm run lint
+npm test
+npm run typecheck:webview
+npm run build:webview
+.venv/bin/python -m pytest python_backend/tests -q
+npm run package
 ```
 
-Common debug commands:
+On Windows use `py -3 -m venv .venv` and `.venv\Scripts\python.exe`.
+Optional live-engine tests skip unless disposable fixture URLs are configured;
+see [the evidence guide](tests/evidence/README.md). OAuth tests bind ephemeral
+localhost ports but use controlled tokens/network adapters, not the user's
+account. They need local socket permission.
+
+## Run in VS Code
+
+Build the extension and webview first. From the repository root:
 
 ```bash
-# Health check
-curl http://127.0.0.1:8765/api/health
-
-# Trigger robustness test from CLI
-curl -X POST http://127.0.0.1:8765/api/robustness \
-  -H 'Content-Type: application/json' \
-  -d @sample-robustness-payload.json
+code --extensionDevelopmentPath=. /path/to/disposable/workspace
 ```
 
-## Adding a New Service
+Use **Verbis: Install / Reinstall Backend** in that window, then
+**Verbis: Open Database Workspace**. The command palette opens with
+Ctrl+Shift+P (Cmd+Shift+P on macOS). **Verbis: Open Assistant** opens the terminal
+assistant; Ctrl+Shift+Q/Cmd+Shift+Q is its registered shortcut.
 
-1. Create `python_backend/services/<your_service>.py`.
-2. Register it in `python_backend/api/dependencies.py` `init_app_state()`.
-3. Add a route in `python_backend/api/routes/<your_route>.py` if user-facing.
-4. Register the router in `python_backend/main.py`.
-5. If new types are needed, add them to both:
-   - `src/types/index.ts` (TypeScript)
-   - `python_backend/models/requests.py` (Pydantic)
-6. Add the matching component UI in `webview/src/components/` if interactive.
+`npm run watch` recompiles extension TypeScript. `npm run watch:webview` starts
+Vite for browser development, but the installed extension loads `webview/dist`:
+run `npm run build:webview` and **Developer: Reload Window** to test packaged UI.
+A browser without a VS Code host cannot execute backend actions.
 
-## Privacy Shield Salt
+Use separate `--user-data-dir` and `--extensions-dir` folders for packaged VSIX
+acceptance, then install with `code --install-extension path/to/verbis.vsix` using
+those same directories. Do not reuse a debugging port on an everyday profile.
 
-On first activation, the extension generates a 32-byte salt and stores it in
-VS Code SecretStorage under the key `qm.privmap.salt`. The Python backend
-reads this salt from the env var `QM_PRIVMAP_SALT` (passed by
-`BackendManager.ts` when spawning the subprocess).
+## Backend debugging
 
-If the salt is lost (e.g., VS Code profile reset), `priv_map.enc` becomes
-unreadable. The shield automatically re-initializes a new map on the next
-cloud LLM call — but historical anonymized SQL cannot be de-anonymized.
+Output → **Verbis** records setup/readiness errors. The extension's managed
+backend binds to loopback and requires its per-process bearer token. Do not copy
+that token into source, logs, example commands or screenshots.
 
-## Testing PII Masking
-
-To verify PII masking works end-to-end:
-
-1. Configure a connection to a database with PII columns (e.g., `employees.ssn`).
-2. Run any query that returns the PII column.
-3. Verify the result grid shows `XXX-XX-XXXX` instead of real SSNs.
-4. Check `.qmind/pii_audit.log` for the audit trail entry.
-
-To customize masking rules, edit `.qmind/pii_rules.json`:
-
-```json
-{
-  "email": { "pattern": "^[\\w.+-]+@[\\w.-]+\\.[a-z]{2,}$", "mask": "xxx@xxx.com" },
-  "phone": { "pattern": "^\\+?\\d{10,15}$", "mask": "XXX-XXX-XXXX" },
-  "ssn":   { "pattern": "^\\d{3}-?\\d{2}-?\\d{4}$", "mask": "XXX-XX-XXXX" }
-}
-```
-
-## Plan Similarity (APTED)
-
-The plan similarity engine uses the `apted` Python package. Install via:
+For a standalone disposable development server, with no credentials:
 
 ```bash
-pip install apted
+.venv/bin/python python_backend/main.py --port 8765 --workspace /path/to/disposable/workspace --log-level DEBUG
 ```
 
-If `apted` is unavailable, the optimizer falls back to a token-overlap
-similarity heuristic (see `optimizer_service.py:_similarity_ratio`).
+Without `QM_BACKEND_TOKEN`, this explicitly launched development server has no
+bearer-token check. Keep its default loopback host and stop it afterward. The
+extension supplies a token for its own backend. Never point write tests at an
+existing personal database.
+
+## Current implementation boundaries
+
+- React uses the single API wrapper in `webview/src/vscode.ts`. `VerbisPanel`
+  routes messages to `AssistantSession` or workspace/backend operations.
+- Active generation is `python_backend/api/routes/generate.py`: shared LLM
+  service, live schema, reviewed definitions and SQL validation. Older generator,
+  optimizer/confidence helpers are not proof of an active feature.
+- **Write SQL myself** resolves the selected schema without provider credentials.
+  Execution retains connection/revision checks, read-only policy, result limits,
+  timeout/cancel and honest manual history.
+- Privacy Shield keeps identifier maps in backend memory for one generation and
+  discards them afterward. The active path does not persist encrypted maps or
+  depend on a stored privacy-map salt.
+- The schema index is offline and lexical. No embedding download or measured
+  plan-similarity optimization is part of the supported query path.
+- PII masking uses current type/name-aware rules in `pii_service.py`; it is not
+  a universal classifier. The audit records column/type without source values.
+  Editing a legacy `pii_rules.json` does not configure these active rules.
+- Provider keys/passwords use VS Code SecretStorage when available. Session keys
+  and OAuth tokens remain in memory; reload requires ChatGPT sign-in again.
+  Never read/reuse Codex's own account credentials.
+- `.qmind/` contains connection metadata, SQL/history, definitions, analyses and
+  managed imported data. It is excluded from Git and packages.
+
+## Changing a workflow
+
+Trace the actual UI → host → API → service path first. Retain connection ids,
+named values and revision/provenance fields. Test observable behavior and
+error/cancel paths. Show unsupported cases honestly. A controlled provider
+response does not prove live model quality or account eligibility.
+
+Use [the synthetic demo](examples/college-demo/README.md), and update the
+[issue ledger](docs/ISSUE-LEDGER.md) and [work log](docs/WORK-LOG.md).
+For the college scope, finish existing workflows rather than adding new modules.
+
+## Packaging
+
+Use the locked `@vscode/vsce` through `npm run package`, with Node 24. Include
+rebuilt `out`, `webview/dist`, Python runtime/requirements and the JWT dependency.
+Exclude tests, profiles, examples, databases, credentials and dev environments.
+Verify the actual installed VSIX.
+
+The verified GitHub workflow builds a downloadable VSIX. The legacy tag publishing
+workflow has an unverified toolchain and needs review before Marketplace use.
+Do not create release tags or publish during testing. `main` remains the stable
+release; development is on its separate branch.

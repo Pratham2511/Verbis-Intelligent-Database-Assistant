@@ -41,6 +41,7 @@ tsconfig.eslint.json
 .local-test/**
 tests/**
 docs/**
+examples/**
 python_backend/tests/**
 .pytest_cache/**
 webview/package-lock.json

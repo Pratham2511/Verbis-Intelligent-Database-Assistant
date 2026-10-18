@@ -205,3 +205,4 @@ button:focus-visible,input:focus-visible,select:focus-visible,textarea:focus-vis
   .workflow-step {padding-left:12px;}
 }
 @media(prefers-reduced-motion:reduce) {*,*::before,*::after {transition:none!important;}}
+.query-values { border: 0; padding: 0; margin: 0; min-width: 0; }

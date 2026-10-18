@@ -2,6 +2,8 @@
 .qmind/
 
 # Python
+**/__pycache__/
+**/*.pyc
 python_backend/venv/
 python_backend/__pycache__/
 python_backend/**/__pycache__/
