@@ -35,7 +35,12 @@ saving it. Marketplace authenticated the first upload but rejected the icon:
 the 2,048-square PNG exceeded the 1 MB limit. Lossless IDAT recompression keeps
 the palette, header and decompressed scanline bytes identical while bringing
 the icon under the limit. Rebuild/retry uses the same verified runtime files;
-the final artifact hash and public availability must be checked again. The old
+the second upload then exposed the separate 1,024-square dimension limit.
+The same artwork is proportionally reduced to 1,024 square, visually inspected
+and checked against both limits before the next build. This dimension reduction
+resamples pixels; the preceding lossless claim applies only to the intermediate
+compression attempt. The final artifact hash and public availability must be
+checked again. The old
 tag workflow is not used: it has unverified tooling and omits runtime dependency
 detection. No release tag is needed to upload an already verified VSIX.
 
