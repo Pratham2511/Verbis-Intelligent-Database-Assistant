@@ -21,19 +21,21 @@ with source links pinned to its release-source commit. All 215 runtime files mus
 match the previously verified package byte for byte. Test profiles, databases,
 credentials, local logs, demo sources and evidence stay outside the VSIX.
 
-The stable artifact is 2,375,218 bytes with 224 entries; all 215 runtime files
+The initial stable artifact was 2,375,218 bytes with 224 entries; all 215 runtime files
 match the verified college VSIX. SHA-256:
 `230ebde88ee087d2dfeeaa3f5a2f6876c54b6b9d64b65e9d1b89c7f847c8388c`.
 Source links are pinned to `0d7eb88089f5dd8eea37214306b082e29a49b105`.
-The exact comparison is recorded in
+The initial comparison is recorded in
 [marketplace-release-checks.json](../tests/evidence/marketplace-release-checks.json).
 
 ## Publication status
 
-Pending publisher authentication and upload. No Marketplace PAT is configured in
-the current environment, local publisher store or repository secrets. The official
-publisher-management sign-in is open for the user; the browser upload route
-does not require sharing a PAT with the agent. The old
+The user chose a temporary publishing PAT, supplied through hidden input without
+saving it. Marketplace authenticated the first upload but rejected the icon:
+the 2,048-square PNG exceeded the 1 MB limit. Lossless IDAT recompression keeps
+the palette, header and decompressed scanline bytes identical while bringing
+the icon under the limit. Rebuild/retry uses the same verified runtime files;
+the final artifact hash and public availability must be checked again. The old
 tag workflow is not used: it has unverified tooling and omits runtime dependency
 detection. No release tag is needed to upload an already verified VSIX.
 
