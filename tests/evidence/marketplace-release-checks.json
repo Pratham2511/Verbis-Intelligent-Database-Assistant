@@ -14,11 +14,11 @@
   "forbiddenFiles": [],
   "credentialPatternFindings": 0,
   "previousVerifiedArtifactSha256": "04fd67abf8e2d722baa3eaf65231a78ae60e5d4e85e56aba92cad020aa3221d9",
-  "status": "Upload accepted; Microsoft validation pending; not yet independently verified live",
+  "status": "Published and independently verified live as latest stable 1.5.0",
   "authorization": "User explicitly requested stable 1.5.0 publication on 19 October 2026",
   "verifiedCodeCommit": "ed5fd51dd84a6b466acaf940d489877f94aa1f95",
   "ciRun": "https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant/actions/runs/39133121287",
-  "authentication": "User-supplied temporary PAT through non-echoing terminal input; process memory only, never saved",
+  "authentication": "Temporary PAT through hidden input and process memory only; never saved. User advised to revoke it.",
   "mainPreservedAt": "77b1422fcac2e205cd6d5ef39c0df94a4b2b3cb5",
   "releaseTagCreated": false,
   "publicationAttempted": true,
@@ -90,5 +90,47 @@
       "outcome": "accepted",
       "artifactSha256": "d30d266efa697e2592324a9e539d27968dbb979aed126c61c21c6c6f71c046ec"
     }
-  ]
+  ],
+  "liveVerification": {
+    "date": "2026-10-19T12:24:16.795900+00:00",
+    "publicLatestVersion": "1.5.0",
+    "publisher": "pratham2511",
+    "extension": "verbis-db-assistant",
+    "manifestUrl": "https://pratham2511.gallery.vsassets.io/_apis/public/gallery/publisher/pratham2511/extension/verbis-db-assistant/latest/assetbyname/Microsoft.VisualStudio.Code.Manifest",
+    "stable": true,
+    "publicDownloadUrl": "https://pratham2511.gallery.vsassets.io/_apis/public/gallery/publisher/pratham2511/extension/verbis-db-assistant/1.5.0/assetbyname/Microsoft.VisualStudio.Services.VSIXPackage",
+    "publicDownloadBytes": 2020340,
+    "publicDownloadSha256": "d30d266efa697e2592324a9e539d27968dbb979aed126c61c21c6c6f71c046ec",
+    "runtimeFilesCompared": 215,
+    "downloadedRuntimeMatchesUploadedArtifact": true,
+    "uploadedArtifactSha256": "d30d266efa697e2592324a9e539d27968dbb979aed126c61c21c6c6f71c046ec",
+    "liveVerified": true
+  },
+  "publicCatalog": {
+    "publisher": "Pratham2511",
+    "extension": "verbis-db-assistant",
+    "versions": [
+      {
+        "version": "1.5.0",
+        "flags": 1,
+        "lastUpdated": "2026-10-19T12:23:23.880Z",
+        "preRelease": false
+      },
+      {
+        "version": "1.4.0",
+        "flags": 1,
+        "lastUpdated": "2026-09-03T04:04:57.320Z",
+        "preRelease": false
+      },
+      {
+        "version": "1.3.0",
+        "flags": 1,
+        "lastUpdated": "2026-09-03T02:33:10.100Z",
+        "preRelease": false
+      }
+    ]
+  },
+  "screenshot": "marketplace-live-manifest.png: actual public 1.5.0 manifest in browser",
+  "webPageCache": "The listing page still showed cached 1.4.0 history during the initial post-validation check; the public catalog explicitly selects validated stable 1.5.0 and its public download matches the upload exactly.",
+  "publicValidated": true
 }

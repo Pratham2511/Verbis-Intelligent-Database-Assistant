@@ -8,8 +8,10 @@ implementation/CI checkpoint. All 215 runtime files in the final release VSIX
 match that verified package byte for byte; stable metadata and source links are
 checked. Marketplace exposed two icon limits: maximum 1024 KB and 1024 square.
 The existing artwork was reduced proportionally and visually checked; both
-constraints now pass (N46). The upload was accepted at 17:46 IST. Public
-validation/download verification remains pending at this checkpoint.
+constraints now pass (N46). The upload was accepted at 17:46 IST. At 17:54 IST the public latest manifest
+and catalog confirm validated stable 1.5.0; the downloaded VSIX hash and all
+215 runtime files match the upload. The listing page initially retained cached
+1.4.0 history, separately disclosed in the release record.
 
 The temporary user-supplied publishing PAT passed through hidden terminal input
 and child-process memory, without being stored in files or Git. No API-provider

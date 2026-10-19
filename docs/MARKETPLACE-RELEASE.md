@@ -7,12 +7,18 @@ the current stable VS Code Marketplace version. GitHub `main` stays at
 
 ## Publication status
 
-The stable upload was accepted on 19 October 2026 at 17:46 IST. Microsoft
-validation is pending at this checkpoint. Public availability is not yet claimed.
-The publisher-status endpoint confirms version 1.5.0 exists with its validated
-flag unset. The initial public asset requests return 404 while the public
-version history still lists 1.4.0. The exact current result is recorded in
+The stable upload was accepted on 19 October 2026 at 17:46 IST. Public
+availability was independently verified at 17:54 IST: the latest manifest
+reports 1.5.0, and the public catalog selects 1.5.0 with the validated flag set
+and pre-release false. The public VSIX download is byte-identical to the uploaded
+artifact, including all 215 runtime files. The catalog records validation at
+17:53 IST. The exact result is in
 [marketplace-release-checks.json](../tests/evidence/marketplace-release-checks.json).
+
+[Open the Marketplace listing](https://marketplace.visualstudio.com/items?itemName=pratham2511.verbis-db-assistant).
+The listing's version-history panel initially retained cached 1.4.0 content
+while the public catalog and download already served validated stable 1.5.0.
+A screenshot of the actual public 1.5.0 manifest is retained as direct proof.
 
 The user chose a temporary Azure DevOps publishing PAT. Hidden terminal input
 passed it only through process memory; it was not saved in files or Git. The
@@ -52,9 +58,15 @@ The old tag workflow was not used: its tooling and dependency handling remain
 unverified. Direct upload of the reviewed VSIX created no tag and changed no
 GitHub `main` files. Documented platform/provider acceptance limits remain.
 
-## Public verification still required
+## Public verification completed
 
-Confirm the public latest manifest reports 1.5.0 as stable, download that public
-VSIX and compare all 215 runtime files against the uploaded artifact. Confirm
-1.5.0 appears in the public version history and save its screenshot. Upload
-success alone is not treated as proof that users can download the new version.
+- Public latest manifest: version 1.5.0, publisher pratham2511.
+- Public catalog: newest version 1.5.0, validated flag 1, pre-release false.
+- Public download: 2,020,340 bytes; SHA-256 equals the uploaded artifact above.
+- All 215 runtime files equal the reviewed upload.
+- Screenshot: [public 1.5.0 manifest](../tests/evidence/marketplace-live-manifest.png).
+
+Earlier public asset requests returned 404 during Microsoft's validation;
+these were pending distribution, not failed uploads. Validation and public
+availability are now confirmed. No new inference or broad regression rerun was
+needed because release changes affect only documentation and the icon.
