@@ -1,6 +1,6 @@
 # Changelog
 
-## 1.5.0 — development, unreleased
+## 1.5.0
 
 - Add manual SQL entry with no provider allowance, retaining database/revision
   binding and execution safeguards.

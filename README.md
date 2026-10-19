@@ -2,8 +2,8 @@
 
 Verbis generates schema-grounded SQL, runs reviewed queries, imports CSV datasets
 and connects analysis results to Python/SQLAlchemy source references. Version
-1.5.0 is a development build; see [the work log](docs/WORK-LOG.md) for verified
-behavior and outstanding release checks.
+1.5.0 adds a complete connect/import, review, execute and save/export workflow;
+see [the work log](docs/WORK-LOG.md) for verified behavior and known limits.
 
 ## Start
 
@@ -28,7 +28,7 @@ behavior and outstanding release checks.
    listed model after connecting. No API key is needed; credentials remain in
    this VS Code window only. Login makes no AI request. Generation uses shared
    plan allowance; disable purchased-credit use in **Manage usage** if desired.
-   This development build allows one attempted request initially and requires
+   Each window allows one attempted request initially and requires
    **Allow one more AI request** for each additional attempt, including retries
    after provider errors. Installed Plus testing passed clarification, SQL
    generation and a follow-up on the synthetic demo; see the
