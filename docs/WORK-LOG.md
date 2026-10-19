@@ -1,5 +1,22 @@
 # Verbis implementation and acceptance log
 
+## Marketplace publication checkpoint — 19 October 2026
+
+At the user's explicit request, prepared a stable 1.5.0 upload while preserving
+GitHub main at the 1.4.0 baseline. Runtime code is unchanged from the passing
+implementation/CI checkpoint. All 215 runtime files in the final release VSIX
+match that verified package byte for byte; stable metadata and source links are
+checked. Marketplace exposed two icon limits: maximum 1024 KB and 1024 square.
+The existing artwork was reduced proportionally and visually checked; both
+constraints now pass (N46). The upload was accepted at 17:46 IST. Public
+validation/download verification remains pending at this checkpoint.
+
+The temporary user-supplied publishing PAT passed through hidden terminal input
+and child-process memory, without being stored in files or Git. No API-provider
+inference was used during publication. The user was told to revoke the PAT.
+See [the release record](MARKETPLACE-RELEASE.md) and
+[publication evidence](../tests/evidence/marketplace-release-checks.json).
+
 ## Current checkpoint — 18 October 2026 (Asia/Kolkata)
 
 The user authorized the finite college-submission scope and limited real Plus

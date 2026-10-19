@@ -5,21 +5,90 @@
   "version": "1.5.0",
   "channel": "stable",
   "entries": 224,
-  "bytes": 2375218,
-  "sha256": "230ebde88ee087d2dfeeaa3f5a2f6876c54b6b9d64b65e9d1b89c7f847c8388c",
-  "sourceCommit": "0d7eb88089f5dd8eea37214306b082e29a49b105",
+  "bytes": 2020340,
+  "sha256": "d30d266efa697e2592324a9e539d27968dbb979aed126c61c21c6c6f71c046ec",
+  "sourceCommit": "544f964b092c7e0332c689d285ef85404fb72c55",
   "runtimeFilesCompared": 215,
   "runtimeIdenticalToVerifiedCollegeVSIX": true,
   "runtimeMatchesSource": true,
   "forbiddenFiles": [],
   "credentialPatternFindings": 0,
   "previousVerifiedArtifactSha256": "04fd67abf8e2d722baa3eaf65231a78ae60e5d4e85e56aba92cad020aa3221d9",
-  "status": "Ready for stable Marketplace upload; awaiting publisher browser sign-in",
+  "status": "Upload accepted; Microsoft validation pending; not yet independently verified live",
   "authorization": "User explicitly requested stable 1.5.0 publication on 19 October 2026",
   "verifiedCodeCommit": "ed5fd51dd84a6b466acaf940d489877f94aa1f95",
   "ciRun": "https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant/actions/runs/39133121287",
-  "authentication": "Publisher management browser session requested; no PAT values configured or stored",
+  "authentication": "User-supplied temporary PAT through non-echoing terminal input; process memory only, never saved",
   "mainPreservedAt": "77b1422fcac2e205cd6d5ef39c0df94a4b2b3cb5",
   "releaseTagCreated": false,
-  "publicationAttempted": false
+  "publicationAttempted": true,
+  "initialRejectedArtifact": {
+    "date": "2026-10-19",
+    "publisher": "pratham2511",
+    "extension": "verbis-db-assistant",
+    "version": "1.5.0",
+    "channel": "stable",
+    "entries": 224,
+    "bytes": 2375218,
+    "sha256": "230ebde88ee087d2dfeeaa3f5a2f6876c54b6b9d64b65e9d1b89c7f847c8388c",
+    "sourceCommit": "0d7eb88089f5dd8eea37214306b082e29a49b105",
+    "runtimeFilesCompared": 215,
+    "runtimeIdenticalToVerifiedCollegeVSIX": true,
+    "runtimeMatchesSource": true,
+    "forbiddenFiles": [],
+    "credentialPatternFindings": 0,
+    "previousVerifiedArtifactSha256": "04fd67abf8e2d722baa3eaf65231a78ae60e5d4e85e56aba92cad020aa3221d9"
+  },
+  "initialRejection": "Marketplace rejected the icon above 1024 KB; no public 1.5.0 availability claimed for that attempt",
+  "iconOptimization": {
+    "originalBytes": 1059456,
+    "optimizedBytes": 1023766,
+    "originalSha256": "0a6dd931825d1f5050e25e9ff7d5c2f40f38efd5fca48368994f02f5bde1911f",
+    "optimizedSha256": "cbc694247b692018387d3cd236c29b40e491d7853afe69f1db9105708d74efe5",
+    "dimensionsUnchanged": [
+      2048,
+      2048
+    ],
+    "scanlineBytesIdentical": true,
+    "paletteAndHeaderPreserved": true,
+    "method": "Lossless IDAT recompression only; no resampling, recoloring or visual edits",
+    "losslessIntermediateBytes": 1023766,
+    "losslessIntermediateSha256": "cbc694247b692018387d3cd236c29b40e491d7853afe69f1db9105708d74efe5",
+    "finalBytes": 698986,
+    "finalSha256": "7ca0ab9d38d0be281001de5edec96196577fec76f7cacf3d34bfcffcc6b538e9",
+    "finalDimensions": [
+      1024,
+      1024
+    ],
+    "finalMethod": "Mechanical proportional 2048-to-1024 downscale of the existing icon; same artwork, visually inspected",
+    "pixelIdentityAppliesTo": "Lossless intermediate only; final dimension reduction resamples pixels"
+  },
+  "publisherExitCode": 0,
+  "publisherAcceptedAt": "2026-10-19T12:16:34.404931+00:00",
+  "ownerValidationCheckpoint": {
+    "extensionFlags": 260,
+    "versions": [
+      {
+        "version": "1.5.0",
+        "flags": 0,
+        "lastUpdated": "2026-10-19T12:16:32.490Z"
+      }
+    ]
+  },
+  "uploadAttempts": [
+    {
+      "outcome": "rejected",
+      "reason": "Icon exceeds 1024 KB",
+      "artifactSha256": "230ebde88ee087d2dfeeaa3f5a2f6876c54b6b9d64b65e9d1b89c7f847c8388c"
+    },
+    {
+      "outcome": "rejected",
+      "reason": "Icon exceeds 1024 x 1024 dimensions",
+      "artifactSha256": "99c193b3cae30d258dacd8afd3b8bb2eca09d3f89ad26114ba9d30574776379d"
+    },
+    {
+      "outcome": "accepted",
+      "artifactSha256": "d30d266efa697e2592324a9e539d27968dbb979aed126c61c21c6c6f71c046ec"
+    }
+  ]
 }

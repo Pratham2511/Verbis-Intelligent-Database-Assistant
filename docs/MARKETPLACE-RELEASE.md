@@ -2,51 +2,59 @@
 
 Prepared 19 October 2026 following the user's explicit request to make 1.5.0
 the current stable VS Code Marketplace version. GitHub `main` stays at
-`77b1422fcac2e205cd6d5ef39c0df94a4b2b3cb5` (1.4.0); development source remains on
+`77b1422fcac2e205cd6d5ef39c0df94a4b2b3cb5` (1.4.0); source remains on
 `work/verbis-1.5-verified-workflows`.
 
-## Verified code and package
+## Publication status
 
-The implementation is unchanged from `ed5fd51dd84a6b466acaf940d489877f94aa1f95`.
+The stable upload was accepted on 19 October 2026 at 17:46 IST. Microsoft
+validation is pending at this checkpoint. Public availability is not yet claimed.
+The publisher-status endpoint confirms version 1.5.0 exists with its validated
+flag unset. The initial public asset requests return 404 while the public
+version history still lists 1.4.0. The exact current result is recorded in
+[marketplace-release-checks.json](../tests/evidence/marketplace-release-checks.json).
+
+The user chose a temporary Azure DevOps publishing PAT. Hidden terminal input
+passed it only through process memory; it was not saved in files or Git. The
+user was told to revoke it after the upload. No additional AI request was made.
+
+## Verified code and artifact
+
+Implementation is unchanged from `ed5fd51dd84a6b466acaf940d489877f94aa1f95`.
 [GitHub verification run 39133121287](https://github.com/Pratham2511/Verbis-Intelligent-Database-Assistant/actions/runs/39133121287)
 passed all five jobs: 88 extension tests, compile/lint/typecheck/build/package,
 Python 3.11/3.12/3.13 with 135 passed / 12 skipped each, and PostgreSQL/MySQL
 integration with 10 passed / two TLS cases skipped. Installed UI and real Plus/
-Gemini acceptance are separately recorded in
+Gemini acceptance remain separately recorded in
 [college-implementation-checks.json](../tests/evidence/college-implementation-checks.json).
 
-Marketplace preparation only removes the development label from the README and
-changelog. The release VSIX is rebuilt with Node 24 and the locked local publisher,
-with source links pinned to its release-source commit. All 215 runtime files must
-match the previously verified package byte for byte. Test profiles, databases,
-credentials, local logs, demo sources and evidence stay outside the VSIX.
+The uploaded VSIX has 224 entries / 2,020,340 bytes. SHA-256:
+`d30d266efa697e2592324a9e539d27968dbb979aed126c61c21c6c6f71c046ec`.
+Source links are pinned to `544f964b092c7e0332c689d285ef85404fb72c55`.
+All 215 runtime files match the tested college package and current source byte
+for byte. The package is stable, includes the jose runtime dependency, and
+contains no test profiles, databases, credentials, local logs, demo sources or
+evidence. Node 24 and the locked publisher built it with normal secret scanning.
 
-The initial stable artifact was 2,375,218 bytes with 224 entries; all 215 runtime files
-match the verified college VSIX. SHA-256:
-`230ebde88ee087d2dfeeaa3f5a2f6876c54b6b9d64b65e9d1b89c7f847c8388c`.
-Source links are pinned to `0d7eb88089f5dd8eea37214306b082e29a49b105`.
-The initial comparison is recorded in
-[marketplace-release-checks.json](../tests/evidence/marketplace-release-checks.json).
+## Packaging findings and safeguards
 
-## Publication status
+The first upload was rejected because the existing 2048-square icon was
+1,059,456 bytes, above the 1024 KB limit. Lossless IDAT compression preserved
+its exact scanline bytes and passed the size check, but the second attempt
+exposed a separate maximum dimension of 1024 square. The final icon uses the
+same artwork, proportionally reduced to 1024 square and visually inspected;
+both size and dimension constraints pass. Resizing resamples pixels, so the
+pixel-identity statement applies only to the intermediate compression attempt.
+The third upload succeeded. Rejected artifact hashes are retained in the JSON
+record; those attempts are not counted as public releases.
 
-The user chose a temporary publishing PAT, supplied through hidden input without
-saving it. Marketplace authenticated the first upload but rejected the icon:
-the 2,048-square PNG exceeded the 1 MB limit. Lossless IDAT recompression keeps
-the palette, header and decompressed scanline bytes identical while bringing
-the icon under the limit. Rebuild/retry uses the same verified runtime files;
-the second upload then exposed the separate 1,024-square dimension limit.
-The same artwork is proportionally reduced to 1,024 square, visually inspected
-and checked against both limits before the next build. This dimension reduction
-resamples pixels; the preceding lossless claim applies only to the intermediate
-compression attempt. The final artifact hash and public availability must be
-checked again. The old
-tag workflow is not used: it has unverified tooling and omits runtime dependency
-detection. No release tag is needed to upload an already verified VSIX.
+The old tag workflow was not used: its tooling and dependency handling remain
+unverified. Direct upload of the reviewed VSIX created no tag and changed no
+GitHub `main` files. Documented platform/provider acceptance limits remain.
 
-The authorized operation is to publish exactly
-`pratham2511.verbis-db-assistant` version `1.5.0` as stable, then independently
-verify the public version manifest and compare downloaded runtime bytes. Do not
-infer public availability from a successful upload alone. Record the final VSIX
-hash and live result here after publication. The limited college scope and
-documented platform/provider acceptance limits remain unchanged.
+## Public verification still required
+
+Confirm the public latest manifest reports 1.5.0 as stable, download that public
+VSIX and compare all 215 runtime files against the uploaded artifact. Confirm
+1.5.0 appears in the public version history and save its screenshot. Upload
+success alone is not treated as proof that users can download the new version.
